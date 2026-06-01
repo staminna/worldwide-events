@@ -1,0 +1,613 @@
+cities:
+  - id: new-york
+    name: New York
+    country: US
+    lat: 40.7128
+    lon: -74.0060
+    eventbrite_slug: ny--new-york
+    songkick_metro: 7644-us-new-york
+    ticketmaster_market: 35
+  - id: los-angeles
+    name: Los Angeles
+    country: US
+    lat: 34.0522
+    lon: -118.2437
+    eventbrite_slug: ca--los-angeles
+    songkick_metro: 17835-us-los-angeles
+    ticketmaster_market: 27
+  - id: chicago
+    name: Chicago
+    country: US
+    lat: 41.8781
+    lon: -87.6298
+    eventbrite_slug: il--chicago
+    songkick_metro: 9426-us-chicago
+    ticketmaster_market: 7
+  - id: san-francisco
+    name: San Francisco
+    country: US
+    lat: 37.7749
+    lon: -122.4194
+    eventbrite_slug: ca--san-francisco
+    songkick_metro: 26330-us-san-francisco
+    ticketmaster_market: 42
+  - id: austin
+    name: Austin
+    country: US
+    lat: 30.2672
+    lon: -97.7431
+    eventbrite_slug: tx--austin
+    songkick_metro: 9876-us-austin
+    ticketmaster_market: 222
+  - id: seattle
+    name: Seattle
+    country: US
+    lat: 47.6062
+    lon: -122.3321
+    eventbrite_slug: wa--seattle
+    songkick_metro: 2846-us-seattle
+    ticketmaster_market: 45
+  - id: miami
+    name: Miami
+    country: US
+    lat: 25.7617
+    lon: -80.1918
+    eventbrite_slug: fl--miami
+    songkick_metro: 24449-us-miami
+    ticketmaster_market: 15
+  - id: boston
+    name: Boston
+    country: US
+    lat: 42.3601
+    lon: -71.0589
+    eventbrite_slug: ma--boston
+    songkick_metro: 24847-us-boston
+    ticketmaster_market: 3
+  - id: toronto
+    name: Toronto
+    country: CA
+    lat: 43.6532
+    lon: -79.3832
+    eventbrite_slug: canada--toronto
+    songkick_metro: 27396-canada-toronto
+    ticketmaster_market: 124
+  - id: vancouver
+    name: Vancouver
+    country: CA
+    lat: 49.2827
+    lon: -123.1207
+    eventbrite_slug: canada--vancouver
+    songkick_metro: 27510-canada-vancouver
+    ticketmaster_market: 128
+  - id: mexico-city
+    name: Mexico City
+    country: MX
+    lat: 19.4326
+    lon: -99.1332
+    eventbrite_slug: mexico--mexico-city
+    songkick_metro: 30142-mexico-mexico-city
+    ticketmaster_market: 270
+  - id: sao-paulo
+    name: São Paulo
+    country: BR
+    lat: -23.5505
+    lon: -46.6333
+    eventbrite_slug: brazil--sao-paulo
+    songkick_metro: 31097-brazil-sao-paulo
+    ticketmaster_market: 351
+  - id: rio-de-janeiro
+    name: Rio de Janeiro
+    country: BR
+    lat: -22.9068
+    lon: -43.1729
+    eventbrite_slug: brazil--rio-de-janeiro
+    songkick_metro: 31104-brazil-rio-de-janeiro
+    ticketmaster_market: 353
+  - id: buenos-aires
+    name: Buenos Aires
+    country: AR
+    lat: -34.6037
+    lon: -58.3816
+    eventbrite_slug: argentina--buenos-aires
+    songkick_metro: 30943-argentina-buenos-aires
+    ticketmaster_market: 0
+  - id: london
+    name: London
+    country: GB
+    lat: 51.5074
+    lon: -0.1278
+    eventbrite_slug: united-kingdom--london
+    songkick_metro: 24426-uk-london
+    ticketmaster_market: 202
+  - id: manchester
+    name: Manchester
+    country: GB
+    lat: 53.4808
+    lon: -2.2426
+    eventbrite_slug: united-kingdom--manchester
+    songkick_metro: 24475-uk-manchester
+    ticketmaster_market: 203
+  - id: dublin
+    name: Dublin
+    country: IE
+    lat: 53.3498
+    lon: -6.2603
+    eventbrite_slug: ireland--dublin
+    songkick_metro: 27767-ireland-dublin
+    ticketmaster_market: 305
+  - id: paris
+    name: Paris
+    country: FR
+    lat: 48.8566
+    lon: 2.3522
+    eventbrite_slug: france--paris
+    songkick_metro: 28909-france-paris
+    ticketmaster_market: 209
+  - id: amsterdam
+    name: Amsterdam
+    country: NL
+    lat: 52.3676
+    lon: 4.9041
+    eventbrite_slug: netherlands--amsterdam
+    songkick_metro: 31366-netherlands-amsterdam
+    ticketmaster_market: 219
+  - id: berlin
+    name: Berlin
+    country: DE
+    lat: 52.5200
+    lon: 13.4050
+    eventbrite_slug: germany--berlin
+    songkick_metro: 28443-germany-berlin
+    ticketmaster_market: 207
+  - id: munich
+    name: Munich
+    country: DE
+    lat: 48.1351
+    lon: 11.5820
+    eventbrite_slug: germany--munich
+    songkick_metro: 28453-germany-munich
+    ticketmaster_market: 206
+  - id: madrid
+    name: Madrid
+    country: ES
+    lat: 40.4168
+    lon: -3.7038
+    eventbrite_slug: spain--madrid
+    songkick_metro: 28714-spain-madrid
+    ticketmaster_market: 214
+  - id: barcelona
+    name: Barcelona
+    country: ES
+    lat: 41.3851
+    lon: 2.1734
+    eventbrite_slug: spain--barcelona
+    songkick_metro: 28706-spain-barcelona
+    ticketmaster_market: 217
+  - id: lisbon
+    name: Lisbon
+    country: PT
+    lat: 38.7223
+    lon: -9.1393
+    eventbrite_slug: portugal--lisbon
+    songkick_metro: 28792-portugal-lisbon
+    ticketmaster_market: 224
+  - id: rome
+    name: Rome
+    country: IT
+    lat: 41.9028
+    lon: 12.4964
+    eventbrite_slug: italy--rome
+    songkick_metro: 28631-italy-rome
+    ticketmaster_market: 220
+  - id: milan
+    name: Milan
+    country: IT
+    lat: 45.4642
+    lon: 9.1900
+    eventbrite_slug: italy--milan
+    songkick_metro: 28620-italy-milan
+    ticketmaster_market: 221
+  - id: stockholm
+    name: Stockholm
+    country: SE
+    lat: 59.3293
+    lon: 18.0686
+    eventbrite_slug: sweden--stockholm
+    songkick_metro: 31423-sweden-stockholm
+    ticketmaster_market: 0
+  - id: copenhagen
+    name: Copenhagen
+    country: DK
+    lat: 55.6761
+    lon: 12.5683
+    eventbrite_slug: denmark--copenhagen
+    songkick_metro: 27784-denmark-copenhagen
+    ticketmaster_market: 0
+  - id: warsaw
+    name: Warsaw
+    country: PL
+    lat: 52.2297
+    lon: 21.0122
+    eventbrite_slug: poland--warsaw
+    songkick_metro: 28992-poland-warsaw
+    ticketmaster_market: 0
+  - id: tokyo
+    name: Tokyo
+    country: JP
+    lat: 35.6762
+    lon: 139.6503
+    eventbrite_slug: japan--tokyo
+    songkick_metro: 30353-japan-tokyo
+    ticketmaster_market: 0
+  - id: osaka
+    name: Osaka
+    country: JP
+    lat: 34.6937
+    lon: 135.5023
+    eventbrite_slug: japan--osaka
+    songkick_metro: 30358-japan-osaka
+    ticketmaster_market: 0
+  - id: seoul
+    name: Seoul
+    country: KR
+    lat: 37.5665
+    lon: 126.9780
+    eventbrite_slug: south-korea--seoul
+    songkick_metro: 30419-south-korea-seoul
+    ticketmaster_market: 0
+  - id: singapore
+    name: Singapore
+    country: SG
+    lat: 1.3521
+    lon: 103.8198
+    eventbrite_slug: singapore--singapore
+    songkick_metro: 30400-singapore-singapore
+    ticketmaster_market: 0
+  - id: hong-kong
+    name: Hong Kong
+    country: HK
+    lat: 22.3193
+    lon: 114.1694
+    eventbrite_slug: hong-kong-sar-china--hong-kong
+    songkick_metro: 30224-hong-kong-hong-kong
+    ticketmaster_market: 0
+  - id: bangkok
+    name: Bangkok
+    country: TH
+    lat: 13.7563
+    lon: 100.5018
+    eventbrite_slug: thailand--bangkok
+    songkick_metro: 30431-thailand-bangkok
+    ticketmaster_market: 0
+  - id: bangalore
+    name: Bangalore
+    country: IN
+    lat: 12.9716
+    lon: 77.5946
+    eventbrite_slug: india--bengaluru
+    songkick_metro: 30247-india-bangalore
+    ticketmaster_market: 0
+  - id: mumbai
+    name: Mumbai
+    country: IN
+    lat: 19.0760
+    lon: 72.8777
+    eventbrite_slug: india--mumbai
+    songkick_metro: 30263-india-mumbai
+    ticketmaster_market: 0
+  - id: delhi
+    name: Delhi
+    country: IN
+    lat: 28.6139
+    lon: 77.2090
+    eventbrite_slug: india--new-delhi
+    songkick_metro: 30253-india-new-delhi
+    ticketmaster_market: 0
+  - id: sydney
+    name: Sydney
+    country: AU
+    lat: -33.8688
+    lon: 151.2093
+    eventbrite_slug: australia--sydney
+    songkick_metro: 28907-australia-sydney
+    ticketmaster_market: 504
+  - id: melbourne
+    name: Melbourne
+    country: AU
+    lat: -37.8136
+    lon: 144.9631
+    eventbrite_slug: australia--melbourne
+    songkick_metro: 28898-australia-melbourne
+    ticketmaster_market: 502
+  - id: auckland
+    name: Auckland
+    country: NZ
+    lat: -36.8485
+    lon: 174.7633
+    eventbrite_slug: new-zealand--auckland
+    songkick_metro: 31336-new-zealand-auckland
+    ticketmaster_market: 0
+  - id: dubai
+    name: Dubai
+    country: AE
+    lat: 25.2048
+    lon: 55.2708
+    eventbrite_slug: united-arab-emirates--dubai
+    songkick_metro: 31389-united-arab-emirates-dubai
+    ticketmaster_market: 0
+  - id: tel-aviv
+    name: Tel Aviv
+    country: IL
+    lat: 32.0853
+    lon: 34.7818
+    eventbrite_slug: israel--tel-aviv-yafo
+    songkick_metro: 30339-israel-tel-aviv
+    ticketmaster_market: 0
+  - id: johannesburg
+    name: Johannesburg
+    country: ZA
+    lat: -26.2041
+    lon: 28.0473
+    eventbrite_slug: south-africa--johannesburg
+    songkick_metro: 28876-south-africa-johannesburg
+    ticketmaster_market: 0
+  - id: cape-town
+    name: Cape Town
+    country: ZA
+    lat: -33.9249
+    lon: 18.4241
+    eventbrite_slug: south-africa--cape-town
+    songkick_metro: 28866-south-africa-cape-town
+    ticketmaster_market: 0
+  - id: nairobi
+    name: Nairobi
+    country: KE
+    lat: -1.2921
+    lon: 36.8219
+    eventbrite_slug: kenya--nairobi
+    songkick_metro: 28837-kenya-nairobi
+    ticketmaster_market: 0
+  - id: cairo
+    name: Cairo
+    country: EG
+    lat: 30.0444
+    lon: 31.2357
+    eventbrite_slug: egypt--cairo
+    songkick_metro: 28820-egypt-cairo
+    ticketmaster_market: 0
+  - id: istanbul
+    name: Istanbul
+    country: TR
+    lat: 41.0082
+    lon: 28.9784
+    eventbrite_slug: turkey--istanbul
+    songkick_metro: 31480-turkey-istanbul
+    ticketmaster_market: 0
+  - id: zurich
+    name: Zurich
+    country: CH
+    lat: 47.3769
+    lon: 8.5417
+    eventbrite_slug: switzerland--zurich
+    songkick_metro: 31439-switzerland-zurich
+    ticketmaster_market: 0
+  - id: vienna
+    name: Vienna
+    country: AT
+    lat: 48.2082
+    lon: 16.3738
+    eventbrite_slug: austria--vienna
+    songkick_metro: 27713-austria-vienna
+    ticketmaster_market: 0
+
+  # European capitals
+  - id: tirana
+    name: Tirana
+    country: AL
+    lat: 41.3275
+    lon: 19.8187
+    eventbrite_slug: albania--tirana
+    luma_city_slug: tirana
+  - id: andorra-la-vella
+    name: Andorra la Vella
+    country: AD
+    lat: 42.5063
+    lon: 1.5218
+    eventbrite_slug: andorra--andorra-la-vella
+    luma_city_slug: andorra
+  - id: brussels
+    name: Brussels
+    country: BE
+    lat: 50.8503
+    lon: 4.3517
+    eventbrite_slug: belgium--brussels
+    luma_city_slug: brussels
+  - id: sarajevo
+    name: Sarajevo
+    country: BA
+    lat: 43.8563
+    lon: 18.4131
+    eventbrite_slug: bosnia-and-herzegovina--sarajevo
+    luma_city_slug: sarajevo
+  - id: sofia
+    name: Sofia
+    country: BG
+    lat: 42.6977
+    lon: 23.3219
+    eventbrite_slug: bulgaria--sofia
+    luma_city_slug: sofia
+  - id: zagreb
+    name: Zagreb
+    country: HR
+    lat: 45.8150
+    lon: 15.9819
+    eventbrite_slug: croatia--zagreb
+    luma_city_slug: zagreb
+  - id: nicosia
+    name: Nicosia
+    country: CY
+    lat: 35.1856
+    lon: 33.3823
+    eventbrite_slug: cyprus--nicosia
+    luma_city_slug: nicosia
+  - id: prague
+    name: Prague
+    country: CZ
+    lat: 50.0755
+    lon: 14.4378
+    eventbrite_slug: czech-republic--prague
+    luma_city_slug: prague
+  - id: tallinn
+    name: Tallinn
+    country: EE
+    lat: 59.4370
+    lon: 24.7536
+    eventbrite_slug: estonia--tallinn
+    luma_city_slug: tallinn
+  - id: helsinki
+    name: Helsinki
+    country: FI
+    lat: 60.1699
+    lon: 24.9384
+    eventbrite_slug: finland--helsinki
+    luma_city_slug: helsinki
+  - id: athens
+    name: Athens
+    country: GR
+    lat: 37.9838
+    lon: 23.7275
+    eventbrite_slug: greece--athens
+    luma_city_slug: athens
+  - id: budapest
+    name: Budapest
+    country: HU
+    lat: 47.4979
+    lon: 19.0402
+    eventbrite_slug: hungary--budapest
+    luma_city_slug: budapest
+  - id: reykjavik
+    name: Reykjavik
+    country: IS
+    lat: 64.1466
+    lon: -21.9426
+    eventbrite_slug: iceland--reykjavik
+    luma_city_slug: reykjavik
+  - id: pristina
+    name: Pristina
+    country: XK
+    lat: 42.6629
+    lon: 21.1655
+    eventbrite_slug: kosovo--pristina
+    luma_city_slug: pristina
+  - id: riga
+    name: Riga
+    country: LV
+    lat: 56.9496
+    lon: 24.1052
+    eventbrite_slug: latvia--riga
+    luma_city_slug: riga
+  - id: vilnius
+    name: Vilnius
+    country: LT
+    lat: 54.6872
+    lon: 25.2797
+    eventbrite_slug: lithuania--vilnius
+    luma_city_slug: vilnius
+  - id: luxembourg
+    name: Luxembourg
+    country: LU
+    lat: 49.6116
+    lon: 6.1319
+    eventbrite_slug: luxembourg--luxembourg
+    luma_city_slug: luxembourg
+  - id: valletta
+    name: Valletta
+    country: MT
+    lat: 35.8989
+    lon: 14.5146
+    eventbrite_slug: malta--valletta
+    luma_city_slug: valletta
+  - id: chisinau
+    name: Chișinău
+    country: MD
+    lat: 47.0105
+    lon: 28.8638
+    eventbrite_slug: moldova--chisinau
+    luma_city_slug: chisinau
+  - id: monaco
+    name: Monaco
+    country: MC
+    lat: 43.7384
+    lon: 7.4246
+    eventbrite_slug: monaco--monaco
+    luma_city_slug: monaco
+  - id: podgorica
+    name: Podgorica
+    country: ME
+    lat: 42.4304
+    lon: 19.2594
+    eventbrite_slug: montenegro--podgorica
+    luma_city_slug: podgorica
+  - id: skopje
+    name: Skopje
+    country: MK
+    lat: 41.9981
+    lon: 21.4254
+    eventbrite_slug: north-macedonia--skopje
+    luma_city_slug: skopje
+  - id: oslo
+    name: Oslo
+    country: NO
+    lat: 59.9139
+    lon: 10.7522
+    eventbrite_slug: norway--oslo
+    luma_city_slug: oslo
+  - id: bucharest
+    name: Bucharest
+    country: RO
+    lat: 44.4268
+    lon: 26.1025
+    eventbrite_slug: romania--bucharest
+    luma_city_slug: bucharest
+  - id: belgrade
+    name: Belgrade
+    country: RS
+    lat: 44.7866
+    lon: 20.4489
+    eventbrite_slug: serbia--belgrade
+    luma_city_slug: belgrade
+  - id: bratislava
+    name: Bratislava
+    country: SK
+    lat: 48.1486
+    lon: 17.1077
+    eventbrite_slug: slovakia--bratislava
+    luma_city_slug: bratislava
+  - id: ljubljana
+    name: Ljubljana
+    country: SI
+    lat: 46.0569
+    lon: 14.5058
+    eventbrite_slug: slovenia--ljubljana
+    luma_city_slug: ljubljana
+  - id: bern
+    name: Bern
+    country: CH
+    lat: 46.9480
+    lon: 7.4474
+    eventbrite_slug: switzerland--bern
+    luma_city_slug: bern
+  - id: ankara
+    name: Ankara
+    country: TR
+    lat: 39.9334
+    lon: 32.8597
+    eventbrite_slug: turkey--ankara
+    luma_city_slug: ankara
+  - id: kyiv
+    name: Kyiv
+    country: UA
+    lat: 50.4501
+    lon: 30.5234
+    eventbrite_slug: ukraine--kyiv
+    luma_city_slug: kyiv

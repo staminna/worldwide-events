@@ -1,0 +1,83 @@
+# ─── OS / editor noise ──────────────────────────────────────────────
+.DS_Store
+*.swp
+*.swo
+*.log
+.atom/
+.history
+.svn/
+.swiftpm/
+.idea/
+*.iml
+*.ipr
+*.iws
+# .vscode/ is sometimes committed for shared launch configs — uncomment to ignore
+#.vscode/
+
+# ─── Dart / Flutter / Pub ───────────────────────────────────────────
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub/
+.pub-cache/
+/build/
+/coverage/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+migrate_working_dir/
+# pubspec.lock is committed for apps (this is one). Leave it tracked.
+
+# ─── Symbolication & obfuscation ────────────────────────────────────
+app.*.symbols
+app.*.map.json
+
+# ─── Android ────────────────────────────────────────────────────────
+/android/.gradle/
+/android/captures/
+/android/local.properties
+/android/key.properties
+/android/app/debug/
+/android/app/profile/
+/android/app/release/
+/android/**/GeneratedPluginRegistrant.java
+*.keystore
+*.jks
+
+# ─── iOS ────────────────────────────────────────────────────────────
+/ios/Pods/
+/ios/.symlinks/
+/ios/Flutter/App.framework
+/ios/Flutter/Flutter.framework
+/ios/Flutter/Flutter.podspec
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/ephemeral/
+/ios/Flutter/app.flx
+/ios/Flutter/app.zip
+/ios/Flutter/flutter_assets/
+/ios/Flutter/flutter_export_environment.sh
+/ios/ServiceDefinitions.json
+/ios/Runner/GeneratedPluginRegistrant.*
+/ios/.generated/
+
+# ─── macOS ──────────────────────────────────────────────────────────
+/macos/Pods/
+/macos/Flutter/GeneratedPluginRegistrant.swift
+/macos/Flutter/ephemeral/
+
+# ─── Web ────────────────────────────────────────────────────────────
+/web/.dart_tool/
+
+# ─── Linux / Windows desktop (in case they're added later) ──────────
+/linux/flutter/ephemeral/
+/windows/flutter/ephemeral/
+
+# ─── Environment & secrets ──────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── Caches generated at runtime ────────────────────────────────────
+# flutter_map's persistent tile cache, if a tile provider that uses it is added
+flutter_map_tile_cache/

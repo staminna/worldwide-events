@@ -1,0 +1,28 @@
+# ─── OS / editor noise ──────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+*.iml
+.vscode/
+.history/
+
+# ─── Local agent / tooling state ────────────────────────────────────
+.claude/
+registered_agents.json
+task_agent_mapping.json
+
+# ─── Environment & secrets (defense in depth; subdirs also ignore) ──
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Per-project ignores live in eventscraper/.gitignore and
+# eventscraper_app/.gitignore. Keep this file for cross-cutting concerns.
