@@ -611,3 +611,224 @@ cities:
     lon: 30.5234
     eventbrite_slug: ukraine--kyiv
     luma_city_slug: kyiv
+
+  # --- Top-3-per-country fill-in (curated, Eventbrite slug only) ---
+  # Songkick metro IDs and Ticketmaster market IDs left blank/0 for these:
+  # those scrapers will simply skip cities they can't address.
+  - id: montreal
+    name: Montreal
+    country: CA
+    lat: 45.5017
+    lon: -73.5673
+    eventbrite_slug: canada--montreal
+    luma_city_slug: montreal
+  - id: brasilia
+    name: Brasília
+    country: BR
+    lat: -15.7939
+    lon: -47.8828
+    eventbrite_slug: brazil--brasilia
+    luma_city_slug: brasilia
+  - id: belo-horizonte
+    name: Belo Horizonte
+    country: BR
+    lat: -19.9167
+    lon: -43.9345
+    eventbrite_slug: brazil--belo-horizonte
+    luma_city_slug: belo-horizonte
+  - id: edinburgh
+    name: Edinburgh
+    country: GB
+    lat: 55.9533
+    lon: -3.1883
+    eventbrite_slug: united-kingdom--edinburgh
+    luma_city_slug: edinburgh
+  - id: birmingham
+    name: Birmingham
+    country: GB
+    lat: 52.4862
+    lon: -1.8904
+    eventbrite_slug: united-kingdom--birmingham
+    luma_city_slug: birmingham
+  - id: lyon
+    name: Lyon
+    country: FR
+    lat: 45.7640
+    lon: 4.8357
+    eventbrite_slug: france--lyon
+    luma_city_slug: lyon
+  - id: marseille
+    name: Marseille
+    country: FR
+    lat: 43.2965
+    lon: 5.3698
+    eventbrite_slug: france--marseille
+    luma_city_slug: marseille
+  - id: hamburg
+    name: Hamburg
+    country: DE
+    lat: 53.5511
+    lon: 9.9937
+    eventbrite_slug: germany--hamburg
+    luma_city_slug: hamburg
+  - id: frankfurt
+    name: Frankfurt
+    country: DE
+    lat: 50.1109
+    lon: 8.6821
+    eventbrite_slug: germany--frankfurt
+    luma_city_slug: frankfurt
+  - id: valencia
+    name: Valencia
+    country: ES
+    lat: 39.4699
+    lon: -0.3763
+    eventbrite_slug: spain--valencia
+    luma_city_slug: valencia
+  - id: seville
+    name: Seville
+    country: ES
+    lat: 37.3891
+    lon: -5.9845
+    eventbrite_slug: spain--sevilla
+    luma_city_slug: seville
+  - id: naples
+    name: Naples
+    country: IT
+    lat: 40.8518
+    lon: 14.2681
+    eventbrite_slug: italy--napoli
+    luma_city_slug: naples
+  - id: florence
+    name: Florence
+    country: IT
+    lat: 43.7696
+    lon: 11.2558
+    eventbrite_slug: italy--firenze
+    luma_city_slug: florence
+  - id: kyoto
+    name: Kyoto
+    country: JP
+    lat: 35.0116
+    lon: 135.7681
+    eventbrite_slug: japan--kyoto
+    luma_city_slug: kyoto
+  - id: brisbane
+    name: Brisbane
+    country: AU
+    lat: -27.4698
+    lon: 153.0251
+    eventbrite_slug: australia--brisbane
+    luma_city_slug: brisbane
+  - id: perth
+    name: Perth
+    country: AU
+    lat: -31.9505
+    lon: 115.8605
+    eventbrite_slug: australia--perth
+    luma_city_slug: perth
+  - id: durban
+    name: Durban
+    country: ZA
+    lat: -29.8587
+    lon: 31.0218
+    eventbrite_slug: south-africa--durban
+    luma_city_slug: durban
+  - id: geneva
+    name: Geneva
+    country: CH
+    lat: 46.2044
+    lon: 6.1432
+    eventbrite_slug: switzerland--geneva
+    luma_city_slug: geneva
+  - id: izmir
+    name: Izmir
+    country: TR
+    lat: 38.4192
+    lon: 27.1287
+    eventbrite_slug: turkey--izmir
+    luma_city_slug: izmir
+  - id: busan
+    name: Busan
+    country: KR
+    lat: 35.1796
+    lon: 129.0756
+    eventbrite_slug: south-korea--busan
+    luma_city_slug: busan
+  - id: guadalajara
+    name: Guadalajara
+    country: MX
+    lat: 20.6597
+    lon: -103.3496
+    eventbrite_slug: mexico--guadalajara
+    luma_city_slug: guadalajara
+  - id: monterrey
+    name: Monterrey
+    country: MX
+    lat: 25.6866
+    lon: -100.3161
+    eventbrite_slug: mexico--monterrey
+    luma_city_slug: monterrey
+  - id: gothenburg
+    name: Gothenburg
+    country: SE
+    lat: 57.7089
+    lon: 11.9746
+    eventbrite_slug: sweden--gothenburg
+    luma_city_slug: gothenburg
+  - id: krakow
+    name: Kraków
+    country: PL
+    lat: 50.0647
+    lon: 19.9450
+    eventbrite_slug: poland--krakow
+    luma_city_slug: krakow
+  - id: wroclaw
+    name: Wrocław
+    country: PL
+    lat: 51.1079
+    lon: 17.0385
+    eventbrite_slug: poland--wroclaw
+    luma_city_slug: wroclaw
+  - id: rotterdam
+    name: Rotterdam
+    country: NL
+    lat: 51.9244
+    lon: 4.4777
+    eventbrite_slug: netherlands--rotterdam
+    luma_city_slug: rotterdam
+  - id: cork
+    name: Cork
+    country: IE
+    lat: 51.8985
+    lon: -8.4756
+    eventbrite_slug: ireland--cork
+    luma_city_slug: cork
+  - id: bergen
+    name: Bergen
+    country: NO
+    lat: 60.3913
+    lon: 5.3221
+    eventbrite_slug: norway--bergen
+    luma_city_slug: bergen
+  - id: antwerp
+    name: Antwerp
+    country: BE
+    lat: 51.2194
+    lon: 4.4025
+    eventbrite_slug: belgium--antwerp
+    luma_city_slug: antwerp
+  - id: porto
+    name: Porto
+    country: PT
+    lat: 41.1579
+    lon: -8.6291
+    eventbrite_slug: portugal--porto
+    luma_city_slug: porto
+  - id: thessaloniki
+    name: Thessaloniki
+    country: GR
+    lat: 40.6401
+    lon: 22.9444
+    eventbrite_slug: greece--thessaloniki
+    luma_city_slug: thessaloniki
