@@ -1,13 +1,18 @@
 # Worldwide Events
 
-A two-part app for browsing upcoming events from across the world, pulled from
++1500 Tech, Business, Music & Culture events
+
+A Multiplatform app built with Go and Flutter for browsing upcoming events from across the world, pulled from
 license-free sources only.
+
+![Application Screenshot](images/Main.png)
+![Application Screenshot](images/Event_details.png)
 
 - **`eventscraper/`** — Go backend. Scrapes Eventbrite, Songkick and Luma,
   caches everything in SQLite with TTL-based stale-while-revalidate, exposes a
   JSON HTTP API, and includes an image-proxy that fixes CORS / hotlinking /
   missing Content-Type problems on the public CDNs.
-- **`eventscraper_app/`** — Flutter client (Web / iOS / Android / macOS).
+- **`eventscraper_app/`** — Flutter client (iOS / Android / Web).
   Responsive 1 / 2 / 3-column grid, persistent search, filter sheet (city,
   category, source, date range), interactive OpenStreetMap view of every
   geocoded event, and a polished event detail screen.

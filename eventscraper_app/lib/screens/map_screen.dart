@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -48,20 +49,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   userAgentPackageName: 'com.jorgenunes.eventscraper_app',
                   maxNativeZoom: 19,
                 ),
-                MarkerLayer(
-                  markers: [
-                    for (final e in placed)
-                      Marker(
-                        point: LatLng(e.venue.lat, e.venue.lon),
-                        width: 38,
-                        height: 38,
-                        child: _MapMarker(
-                          event: e,
-                          selected: _selected?.id == e.id,
-                          onTap: () => setState(() => _selected = e),
+                MarkerClusterLayerWidget(
+                  options: MarkerClusterLayerOptions(
+                    maxClusterRadius: 60,
+                    size: const Size(46, 46),
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.all(40),
+                    markers: [
+                      for (final e in placed)
+                        Marker(
+                          point: LatLng(e.venue.lat, e.venue.lon),
+                          width: 38,
+                          height: 38,
+                          child: _MapMarker(
+                            event: e,
+                            selected: _selected?.id == e.id,
+                            onTap: () => setState(() => _selected = e),
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                    builder: (context, markers) =>
+                        _ClusterBubble(count: markers.length),
+                  ),
                 ),
                 const RichAttributionWidget(
                   attributions: [
@@ -155,6 +164,45 @@ class _MapMarker extends StatelessWidget {
             color: Colors.white,
             size: 18,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClusterBubble extends StatelessWidget {
+  const _ClusterBubble({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // Tier the bubble size + color so dense clusters read at a glance.
+    final tier = count >= 100 ? 2 : (count >= 10 ? 1 : 0);
+    final size = [40.0, 46.0, 56.0][tier];
+    final color = [cs.primary, cs.secondary, cs.tertiary][tier];
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: 0.92),
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Text(
+        '$count',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+          fontSize: tier == 2 ? 16 : 14,
         ),
       ),
     );

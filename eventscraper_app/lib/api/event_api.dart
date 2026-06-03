@@ -13,6 +13,49 @@ String proxiedImage(String url) {
   return '$kApiBase/img?u=${Uri.encodeQueryComponent(url)}';
 }
 
+/// Rewrites known CDN URLs to request a higher-resolution variant.
+/// Used on detail screens where the small thumbnail picked up by the scraper
+/// looks blurry when stretched to full width.
+String hiResImage(String url, {int width = 1600}) {
+  if (url.isEmpty) return url;
+  final lower = url.toLowerCase();
+
+  // Eventbrite: img.evbuc.com / cdn.evbuc.com use ?w=&h= sizing params,
+  // capped by the upstream original. Bumping w/h gets the full-res render
+  // (they ignore values larger than the source). Strip the rect crop too,
+  // which forces a small aspect-ratio box.
+  if (lower.contains('evbuc.com') || lower.contains('eventbrite')) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return url;
+    final qp = Map<String, String>.from(uri.queryParameters);
+    qp.remove('h');
+    qp.remove('rect');
+    qp['w'] = width.toString();
+    qp['auto'] = qp['auto'] ?? 'format,compress';
+    qp['q'] = '85';
+    return uri.replace(queryParameters: qp).toString();
+  }
+
+  // Luma: images.lumacdn.com uses Cloudflare image-resizing in the path,
+  // e.g. /cdn-cgi/image/format=auto,fit=cover,dpr=2,quality=75,width=400/...
+  // Rewrite width=N in that segment.
+  if (lower.contains('lumacdn.com') || lower.contains('cdn.lu.ma')) {
+    final widthRe = RegExp(r'(?<=[,/])width=\d+');
+    if (widthRe.hasMatch(url)) {
+      return url.replaceFirst(widthRe, 'width=$width');
+    }
+  }
+
+  // Songkick avatars: sk-static uses size prefixes (avatar/large_avatar/huge_avatar).
+  if (lower.contains('sk-static')) {
+    return url
+        .replaceAll('/large_avatar', '/huge_avatar')
+        .replaceAll('/medium_avatar', '/huge_avatar');
+  }
+
+  return url;
+}
+
 class EventApi {
   EventApi({String? baseUrl})
       : _dio = Dio(BaseOptions(

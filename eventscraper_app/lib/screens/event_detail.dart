@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:latlong2/latlong.dart';
+// `latlong2` exports a `Path<LatLng>` type that shadows the `dart:ui` Path
+// used by CustomPainter. Hide it so canvas drawing resolves correctly.
+import 'package:latlong2/latlong.dart' hide Path;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/event_api.dart';
@@ -52,10 +54,11 @@ class _EventDetailView extends ConsumerWidget {
                   ? const _NoCoordsPane()
                   : _DetailMap(
                       center: mapPoint,
+                      event: event,
                       label: isVenueLevel
                           ? null
                           : '${event.city}, ${event.country}',
-                      zoom: isVenueLevel ? 14 : 11,
+                      zoom: isVenueLevel ? 15 : 11,
                     );
               if (wide) {
                 return Row(
@@ -140,12 +143,18 @@ class _HeroHeader extends StatelessWidget {
                       ),
                     ),
                     child: CachedNetworkImage(
-                      imageUrl: proxiedImage(event.imageUrl),
+                      imageUrl: proxiedImage(hiResImage(event.imageUrl)),
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Container(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
+                      // Fall back to the small thumbnail the feed already
+                      // displays if the hi-res variant 404s on this CDN.
+                      errorWidget: (_, __, ___) => CachedNetworkImage(
+                        imageUrl: proxiedImage(event.imageUrl),
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => Container(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                        ),
                       ),
                     ),
                   ),
@@ -303,10 +312,16 @@ class _IconRow extends StatelessWidget {
 }
 
 class _DetailMap extends StatelessWidget {
-  const _DetailMap({required this.center, required this.zoom, this.label});
+  const _DetailMap({
+    required this.center,
+    required this.zoom,
+    required this.event,
+    this.label,
+  });
 
   final LatLng center;
   final double zoom;
+  final Event event;
   final String? label;
 
   @override
@@ -343,13 +358,12 @@ class _DetailMap extends StatelessWidget {
                     markers: [
                       Marker(
                         point: center,
-                        width: 44,
-                        height: 44,
-                        child: const Icon(
-                          Icons.location_pin,
-                          size: 44,
-                          color: Colors.red,
-                        ),
+                        // Wider/taller than the visual so the pin tip
+                        // (anchor) sits exactly on the coordinate.
+                        width: 56,
+                        height: 64,
+                        alignment: Alignment.topCenter,
+                        child: _LocationPin(category: event.category),
                       ),
                     ],
                   ),
@@ -394,6 +408,87 @@ class _DetailMap extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Pill-shaped pin: circular head with category icon + a triangular tail
+/// that points at the actual coordinate.
+class _LocationPin extends StatelessWidget {
+  const _LocationPin({required this.category});
+
+  final EventCategory category;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final color = switch (category) {
+      EventCategory.tech => cs.primary,
+      EventCategory.music => cs.secondary,
+      EventCategory.business => cs.tertiary,
+      _ => cs.error,
+    };
+    final icon = switch (category) {
+      EventCategory.tech => Icons.code,
+      EventCategory.music => Icons.music_note,
+      EventCategory.business => Icons.business_center,
+      _ => Icons.place,
+    };
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: 22),
+        ),
+        // Triangular tail. CustomPaint keeps the tail perfectly centered
+        // below the head so the tip lands on the LatLng anchor.
+        CustomPaint(
+          size: const Size(14, 14),
+          painter: _PinTailPainter(color: color),
+        ),
+      ],
+    );
+  }
+}
+
+class _PinTailPainter extends CustomPainter {
+  _PinTailPainter({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final shadow = Paint()
+      ..color = Colors.black.withValues(alpha: 0.25)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    final body = Paint()..color = color;
+    final stroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..close();
+    canvas.drawPath(path, shadow);
+    canvas.drawPath(path, body);
+    canvas.drawPath(path, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PinTailPainter old) => old.color != color;
 }
 
 class _NoCoordsPane extends StatelessWidget {
