@@ -53,6 +53,20 @@ String hiResImage(String url, {int width = 1600}) {
         .replaceAll('/medium_avatar', '/huge_avatar');
   }
 
+  // viralagenda: promoter images under /events/ext/ are served either as the
+  // full-size original (no suffix) or a downscaled `-r` copy (~640-750px wide).
+  // When we hold the `-r` copy, drop the suffix to fetch the original, which is
+  // frequently much larger (e.g. 1440x1800). If a given event's original isn't
+  // public the request 404s and the caller falls back to the stored URL. The
+  // hashed `/events/<hash>-large.jpg` form has no larger variant, so it's left
+  // untouched.
+  if (lower.contains('viralagenda.com')) {
+    return url.replaceFirstMapped(
+      RegExp(r'-r(\.(?:jpe?g|png))$', caseSensitive: false),
+      (m) => m[1]!,
+    );
+  }
+
   return url;
 }
 

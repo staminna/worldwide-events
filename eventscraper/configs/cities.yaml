@@ -832,3 +832,96 @@ cities:
     lon: 22.9444
     eventbrite_slug: greece--thessaloniki
     luma_city_slug: thessaloniki
+  # Portugal districts covered by viralagenda.com/pt. The viralagenda scraper
+  # derives its district slug from the city id (PT cities only); lisbon maps to
+  # "lisboa" and porto reuses the existing entries above.
+  - id: aveiro
+    name: Aveiro
+    country: PT
+    lat: 40.6405
+    lon: -8.6538
+  - id: beja
+    name: Beja
+    country: PT
+    lat: 38.0150
+    lon: -7.8632
+  - id: braga
+    name: Braga
+    country: PT
+    lat: 41.5454
+    lon: -8.4265
+  - id: braganca
+    name: Bragança
+    country: PT
+    lat: 41.8061
+    lon: -6.7567
+  - id: castelo-branco
+    name: Castelo Branco
+    country: PT
+    lat: 39.8222
+    lon: -7.4931
+  - id: coimbra
+    name: Coimbra
+    country: PT
+    lat: 40.2033
+    lon: -8.4103
+  - id: evora
+    name: Évora
+    country: PT
+    lat: 38.5714
+    lon: -7.9135
+  - id: faro
+    name: Faro
+    country: PT
+    lat: 37.0194
+    lon: -7.9304
+  - id: guarda
+    name: Guarda
+    country: PT
+    lat: 40.5373
+    lon: -7.2657
+  - id: leiria
+    name: Leiria
+    country: PT
+    lat: 39.7436
+    lon: -8.8071
+  - id: portalegre
+    name: Portalegre
+    country: PT
+    lat: 39.2967
+    lon: -7.4286
+  - id: santarem
+    name: Santarém
+    country: PT
+    lat: 39.2362
+    lon: -8.6859
+  - id: setubal
+    name: Setúbal
+    country: PT
+    lat: 38.5244
+    lon: -8.8882
+  - id: viana-do-castelo
+    name: Viana do Castelo
+    country: PT
+    lat: 41.6932
+    lon: -8.8329
+  - id: vila-real
+    name: Vila Real
+    country: PT
+    lat: 41.3006
+    lon: -7.7441
+  - id: viseu
+    name: Viseu
+    country: PT
+    lat: 40.6566
+    lon: -7.9122
+  - id: acores
+    name: Açores
+    country: PT
+    lat: 37.7394
+    lon: -25.6687
+  - id: madeira
+    name: Madeira
+    country: PT
+    lat: 32.6669
+    lon: -16.9241

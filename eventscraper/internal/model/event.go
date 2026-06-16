@@ -14,18 +14,19 @@ const (
 	SourceLuma         Source = "luma"
 	SourceTicketmaster Source = "ticketmaster"
 	SourceMeetup       Source = "meetup"
+	SourceViralagenda  Source = "viralagenda"
 )
 
 func (s Source) Valid() bool {
 	switch s {
-	case SourceEventbrite, SourceSongkick, SourceLuma, SourceTicketmaster, SourceMeetup:
+	case SourceEventbrite, SourceSongkick, SourceLuma, SourceTicketmaster, SourceMeetup, SourceViralagenda:
 		return true
 	}
 	return false
 }
 
 func AllSources() []Source {
-	return []Source{SourceEventbrite, SourceSongkick, SourceLuma, SourceTicketmaster, SourceMeetup}
+	return []Source{SourceEventbrite, SourceSongkick, SourceLuma, SourceTicketmaster, SourceMeetup, SourceViralagenda}
 }
 
 type Category string

@@ -11,16 +11,26 @@ class ImageViewerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Request the hi-res CDN variant (same URL the detail hero already cached,
+    // so it shows instantly), and only fall back to the small thumbnail if that
+    // variant 404s on this CDN.
     final image = CachedNetworkImage(
-      imageUrl: proxiedImage(url),
+      imageUrl: proxiedImage(hiResImage(url)),
       fit: BoxFit.contain,
       placeholder: (_, __) => const Center(
         child: CircularProgressIndicator(color: Colors.white),
       ),
-      errorWidget: (_, __, ___) => const Icon(
-        Icons.broken_image,
-        color: Colors.white54,
-        size: 64,
+      errorWidget: (_, __, ___) => CachedNetworkImage(
+        imageUrl: proxiedImage(url),
+        fit: BoxFit.contain,
+        placeholder: (_, __) => const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+        errorWidget: (_, __, ___) => const Icon(
+          Icons.broken_image,
+          color: Colors.white54,
+          size: 64,
+        ),
       ),
     );
     return Scaffold(

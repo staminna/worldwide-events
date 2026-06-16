@@ -59,8 +59,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       for (final e in placed)
                         Marker(
                           point: LatLng(e.venue.lat, e.venue.lon),
-                          width: 38,
-                          height: 38,
+                          width: 46,
+                          height: 52,
+                          // Anchor the teardrop's tip on the coordinate: with
+                          // topCenter the whole marker sits above the point, so
+                          // its bottom tip lands exactly on the location.
+                          alignment: Alignment.topCenter,
                           child: _MapMarker(
                             event: e,
                             selected: _selected?.id == e.id,
@@ -135,34 +139,66 @@ class _MapMarker extends StatelessWidget {
       EventCategory.business => cs.tertiary,
       _ => cs.outline,
     };
-    final scale = selected ? 1.15 : 1.0;
+    final glyph = switch (event.category) {
+      EventCategory.tech => Icons.code,
+      EventCategory.music => Icons.music_note,
+      EventCategory.business => Icons.business_center,
+      _ => Icons.place,
+    };
+    final scale = selected ? 1.18 : 1.0;
+    // A modern teardrop pin: a colored map-pin glyph with a white outline and
+    // a recessed white disc holding the category icon. Bottom-aligned so the
+    // tip sits at the very bottom of the box (the Marker anchors that to the
+    // coordinate).
     return GestureDetector(
       onTap: onTap,
       child: AnimatedScale(
         scale: scale,
-        duration: const Duration(milliseconds: 120),
-        child: Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color,
-            border: Border.all(color: Colors.white, width: 2.5),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutBack,
+        child: SizedBox(
+          width: 46,
+          height: 52,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.bottomCenter,
+            children: [
+              // White halo behind, giving the pin a crisp edge on busy maps.
+              const Align(
+                alignment: Alignment.bottomCenter,
+                child: Icon(Icons.location_on, size: 46, color: Colors.white),
+              ),
+              // The colored pin body with a soft drop shadow.
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Icon(
+                  Icons.location_on,
+                  size: 42,
+                  color: color,
+                  shadows: const [
+                    Shadow(
+                      color: Color(0x59000000),
+                      blurRadius: 5,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+              ),
+              // Category glyph in a white disc set into the pin's head.
+              Align(
+                alignment: const Alignment(0, -0.34),
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                  child: Icon(glyph, size: 12, color: color),
+                ),
               ),
             ],
-          ),
-          child: Icon(
-            switch (event.category) {
-              EventCategory.tech => Icons.code,
-              EventCategory.music => Icons.music_note,
-              EventCategory.business => Icons.business_center,
-              _ => Icons.place,
-            },
-            color: Colors.white,
-            size: 18,
           ),
         ),
       ),

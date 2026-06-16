@@ -37,6 +37,7 @@ func TestAllSourcesCovers(t *testing.T) {
 		SourceLuma:         {},
 		SourceTicketmaster: {},
 		SourceMeetup:       {},
+		SourceViralagenda:  {},
 	}
 	got := map[Source]struct{}{}
 	for _, s := range AllSources() {

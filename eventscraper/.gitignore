@@ -3,4 +3,7 @@
 *.db-wal
 *.db-shm
 .env
-eventscraper
+# The compiled binary, anchored to this directory. Without the leading slash
+# this also matched the cmd/eventscraper/ source dir, so main.go was never
+# tracked.
+/eventscraper
