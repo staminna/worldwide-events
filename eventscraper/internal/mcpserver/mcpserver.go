@@ -1,0 +1,131 @@
+// Package mcpserver exposes the eventscraper's read-only data over the Model
+// Context Protocol, so MCP clients (Claude, IDEs, etc.) can search scraped
+// events and inspect the configured cities and sources.
+package mcpserver
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/jorgenunes/eventscraper/internal/geo"
+	"github.com/jorgenunes/eventscraper/internal/model"
+	"github.com/jorgenunes/eventscraper/internal/scraper"
+	"github.com/jorgenunes/eventscraper/internal/store"
+)
+
+// Version is reported to MCP clients as the server implementation version.
+const Version = "v1.0.0"
+
+// New builds an MCP server that exposes the scraper's data as tools. The
+// returned server still needs to be run over a transport, e.g.
+//
+//	srv.Run(ctx, &mcp.StdioTransport{})
+func New(st store.Store, cat *geo.Catalog, reg *scraper.Registry) *mcp.Server {
+	srv := mcp.NewServer(&mcp.Implementation{Name: "eventscraper", Version: Version}, nil)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "search_events",
+		Description: "Search scraped events by city, category, source and/or free text. Returns matching events plus the total number available before the limit was applied.",
+	}, searchEvents(st))
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_cities",
+		Description: "List every city the scraper is configured to cover.",
+	}, listCities(cat))
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_sources",
+		Description: "List every event source and whether it is currently enabled.",
+	}, listSources(reg))
+
+	return srv
+}
+
+// SearchEventsInput mirrors the filterable fields of store.Query. Empty fields
+// are treated as "no filter".
+type SearchEventsInput struct {
+	City     string `json:"city,omitempty"     jsonschema:"filter by city name, e.g. London"`
+	Category string `json:"category,omitempty" jsonschema:"one of: tech, music, business"`
+	Source   string `json:"source,omitempty"   jsonschema:"one of: eventbrite, songkick, luma, ticketmaster, meetup"`
+	Search   string `json:"search,omitempty"   jsonschema:"free-text query over event title and description"`
+	Limit    int    `json:"limit,omitempty"    jsonschema:"maximum events to return (1-100, default 20)"`
+}
+
+// SearchEventsOutput reports the matched events along with the total count
+// available before the limit was applied.
+type SearchEventsOutput struct {
+	Count  int           `json:"count"`
+	Total  int           `json:"total"`
+	Events []model.Event `json:"events"`
+}
+
+func searchEvents(st store.Store) mcp.ToolHandlerFor[SearchEventsInput, SearchEventsOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in SearchEventsInput) (*mcp.CallToolResult, SearchEventsOutput, error) {
+		limit := in.Limit
+		switch {
+		case limit <= 0:
+			limit = 20
+		case limit > 100:
+			limit = 100
+		}
+
+		cat := model.Category(in.Category)
+		if in.Category != "" && !cat.Valid() {
+			return nil, SearchEventsOutput{}, fmt.Errorf("invalid category %q", in.Category)
+		}
+		src := model.Source(in.Source)
+		if in.Source != "" && !src.Valid() {
+			return nil, SearchEventsOutput{}, fmt.Errorf("invalid source %q", in.Source)
+		}
+
+		events, total, _, err := st.Query(ctx, store.Query{
+			City:     in.City,
+			Category: cat,
+			Source:   src,
+			Search:   in.Search,
+			Limit:    limit,
+		})
+		if err != nil {
+			return nil, SearchEventsOutput{}, fmt.Errorf("query events: %w", err)
+		}
+		return nil, SearchEventsOutput{Count: len(events), Total: total, Events: events}, nil
+	}
+}
+
+// ListCitiesOutput is the result of the list_cities tool.
+type ListCitiesOutput struct {
+	Count  int        `json:"count"`
+	Cities []geo.City `json:"cities"`
+}
+
+func listCities(cat *geo.Catalog) mcp.ToolHandlerFor[struct{}, ListCitiesOutput] {
+	return func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, ListCitiesOutput, error) {
+		cities := cat.All()
+		return nil, ListCitiesOutput{Count: len(cities), Cities: cities}, nil
+	}
+}
+
+// SourceStatus reports whether a given source is wired up in the registry.
+type SourceStatus struct {
+	Source  model.Source `json:"source"`
+	Enabled bool         `json:"enabled"`
+}
+
+// ListSourcesOutput is the result of the list_sources tool.
+type ListSourcesOutput struct {
+	Sources []SourceStatus `json:"sources"`
+}
+
+func listSources(reg *scraper.Registry) mcp.ToolHandlerFor[struct{}, ListSourcesOutput] {
+	return func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, ListSourcesOutput, error) {
+		all := model.AllSources()
+		out := ListSourcesOutput{Sources: make([]SourceStatus, 0, len(all))}
+		for _, src := range all {
+			_, ok := reg.Get(src)
+			out.Sources = append(out.Sources, SourceStatus{Source: src, Enabled: ok})
+		}
+		return nil, out, nil
+	}
+}
