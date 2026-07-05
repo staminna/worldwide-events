@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api/event_api.dart';
 import '../models/event.dart';
 import '../state/providers.dart';
+import '../widgets/category_style.dart';
 import 'image_viewer.dart';
 
 class EventDetailScreen extends ConsumerWidget {
@@ -90,8 +91,7 @@ class _EventDetailView extends ConsumerWidget {
                 onPressed: () async {
                   final uri = Uri.tryParse(event.url);
                   if (uri != null) {
-                    await launchUrl(uri,
-                        mode: LaunchMode.externalApplication);
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
                   }
                 },
               ),
@@ -151,17 +151,16 @@ class _HeroHeader extends StatelessWidget {
                         imageUrl: proxiedImage(event.imageUrl),
                         fit: BoxFit.cover,
                         errorWidget: (_, __, ___) => Container(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
                         ),
                       ),
                     ),
                   ),
                 )
               : Container(
-                  color:
-                      Theme.of(context).colorScheme.surfaceContainerHighest,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   child: const Icon(Icons.event, size: 56),
                 ),
         ),
@@ -206,14 +205,18 @@ class _HeroHeader extends StatelessWidget {
               shape: const StadiumBorder(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: const [
                     Icon(Icons.zoom_out_map, size: 14, color: Colors.white),
                     SizedBox(width: 4),
-                    Text('Tap to expand',
-                        style: TextStyle(color: Colors.white, fontSize: 11)),
+                    Text(
+                      'Tap to expand',
+                      style: TextStyle(color: Colors.white, fontSize: 11),
+                    ),
                   ],
                 ),
               ),
@@ -239,9 +242,9 @@ class _DetailsPane extends StatelessWidget {
         children: [
           Text(
             event.title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -252,18 +255,20 @@ class _DetailsPane extends StatelessWidget {
               Chip(label: Text(categoryLabel(event.category))),
               if (event.price != null)
                 Chip(
-                  label: Text(event.price!.free
-                      ? 'Free'
-                      : '${event.price!.min.toStringAsFixed(0)}–${event.price!.max.toStringAsFixed(0)} ${event.price!.currency}'),
+                  label: Text(
+                    event.price!.free
+                        ? 'Free'
+                        : '${event.price!.min.toStringAsFixed(0)}–${event.price!.max.toStringAsFixed(0)} ${event.price!.currency}',
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 16),
           _IconRow(
             icon: Icons.schedule,
-            text: DateFormat.yMMMMEEEEd()
-                .add_jm()
-                .format(event.startsAt.toLocal()),
+            text: DateFormat.yMMMMEEEEd().add_jm().format(
+              event.startsAt.toLocal(),
+            ),
           ),
           const SizedBox(height: 8),
           _IconRow(
@@ -279,9 +284,9 @@ class _DetailsPane extends StatelessWidget {
             Text(
               event.description,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: cs.onSurface,
-                    height: 1.45,
-                  ),
+                color: cs.onSurface,
+                height: 1.45,
+              ),
             ),
           ],
         ],
@@ -301,11 +306,15 @@ class _IconRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon,
-            size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        Icon(
+          icon,
+          size: 20,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
         const SizedBox(width: 8),
         Expanded(
-            child: Text(text, style: Theme.of(context).textTheme.bodyLarge)),
+          child: Text(text, style: Theme.of(context).textTheme.bodyLarge),
+        ),
       ],
     );
   }
@@ -340,7 +349,8 @@ class _DetailMap extends StatelessWidget {
                   minZoom: 2,
                   maxZoom: 18,
                   interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.pinchZoom |
+                    flags:
+                        InteractiveFlag.pinchZoom |
                         InteractiveFlag.drag |
                         InteractiveFlag.doubleTapZoom |
                         InteractiveFlag.scrollWheelZoom,
@@ -350,8 +360,7 @@ class _DetailMap extends StatelessWidget {
                   TileLayer(
                     urlTemplate:
                         'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName:
-                        'com.jorgenunes.eventscraper_app',
+                    userAgentPackageName: 'com.jorgenunes.eventscraper_app',
                     maxNativeZoom: 19,
                   ),
                   MarkerLayer(
@@ -369,9 +378,7 @@ class _DetailMap extends StatelessWidget {
                   ),
                   const RichAttributionWidget(
                     attributions: [
-                      TextSourceAttribution(
-                        '© OpenStreetMap contributors',
-                      ),
+                      TextSourceAttribution('© OpenStreetMap contributors'),
                     ],
                   ),
                 ],
@@ -386,17 +393,24 @@ class _DetailMap extends StatelessWidget {
                   shape: const StadiumBorder(),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.location_city,
-                            size: 14, color: Colors.white),
+                        const Icon(
+                          Icons.location_city,
+                          size: 14,
+                          color: Colors.white,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'Approximate • $label',
                           style: const TextStyle(
-                              color: Colors.white, fontSize: 12),
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -420,18 +434,8 @@ class _LocationPin extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final color = switch (category) {
-      EventCategory.tech => cs.primary,
-      EventCategory.music => cs.secondary,
-      EventCategory.business => cs.tertiary,
-      _ => cs.error,
-    };
-    final icon = switch (category) {
-      EventCategory.tech => Icons.code,
-      EventCategory.music => Icons.music_note,
-      EventCategory.business => Icons.business_center,
-      _ => Icons.place,
-    };
+    final color = categoryColor(cs, category);
+    final icon = categoryIcon(category);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -503,14 +507,13 @@ class _NoCoordsPane extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.location_off,
-                size: 40, color: cs.onSurfaceVariant),
+            Icon(Icons.location_off, size: 40, color: cs.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(
               'No location coordinates for this event.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
             ),
           ],
         ),

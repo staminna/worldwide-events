@@ -8,15 +8,25 @@ import (
 )
 
 type Query struct {
-	City         string
-	Category     model.Category
-	Source       model.Source
-	From         time.Time
-	To           time.Time
-	Search       string
-	Limit        int
-	Offset       int
-	RequireImage bool
+	// CityID matches the catalog city an event was scraped for (exact,
+	// e.g. "lisbon"). This is what the API and CLI filter on.
+	CityID string
+	// City matches the stored display city — the venue's own locality
+	// string (e.g. "Carnaxide"). Used by the MCP server for free-text
+	// city input that doesn't resolve to a catalog entry.
+	City     string
+	Category model.Category
+	Source   model.Source
+	From     time.Time
+	To       time.Time
+	// NotEndedBefore, when non-zero, hides events that already finished by
+	// that instant: an event is kept while its ends_at (or, lacking one,
+	// starts_at plus a grace window) is still in the future.
+	NotEndedBefore time.Time
+	Search         string
+	Limit          int
+	Offset         int
+	RequireImage   bool
 }
 
 type ScrapeStatus struct {

@@ -57,12 +57,15 @@ func TestParseQueryDefaults(t *testing.T) {
 	if !q.RequireImage {
 		t.Errorf("default RequireImage should be true")
 	}
-	if q.From.IsZero() {
-		t.Errorf("default From should be set to today UTC")
+	if !q.From.IsZero() {
+		t.Errorf("default From should be zero (hide-ended filter is used instead), got %v", q.From)
 	}
-	// From defaults to UTC start-of-day, so hour/min/sec should all be zero.
-	if q.From.Hour() != 0 || q.From.Minute() != 0 || q.From.Second() != 0 {
-		t.Errorf("default From not midnight UTC: %v", q.From)
+	// Without an explicit from, already-finished events are hidden.
+	if q.NotEndedBefore.IsZero() {
+		t.Errorf("default NotEndedBefore should be set to now")
+	}
+	if d := time.Since(q.NotEndedBefore); d < 0 || d > time.Minute {
+		t.Errorf("default NotEndedBefore not ~now: %v", q.NotEndedBefore)
 	}
 }
 
@@ -77,8 +80,11 @@ func TestParseQueryFilters(t *testing.T) {
 	if city == nil || city.ID != "lisbon" {
 		t.Errorf("city = %+v", city)
 	}
-	if q.City != "Lisbon" {
-		t.Errorf("q.City = %q, want Lisbon (resolved name)", q.City)
+	if q.CityID != "lisbon" {
+		t.Errorf("q.CityID = %q, want lisbon (catalog id; venue spellings must not fragment the feed)", q.CityID)
+	}
+	if q.City != "" {
+		t.Errorf("q.City = %q, want empty (display-city match is only for free-text MCP lookups)", q.City)
 	}
 	if q.Category != model.CategoryMusic {
 		t.Errorf("Category = %v", q.Category)
@@ -97,6 +103,10 @@ func TestParseQueryFilters(t *testing.T) {
 	}
 	if !q.From.Equal(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("From = %v", q.From)
+	}
+	// An explicit from opts into history: no hide-ended filter.
+	if !q.NotEndedBefore.IsZero() {
+		t.Errorf("NotEndedBefore should be zero with explicit from, got %v", q.NotEndedBefore)
 	}
 	// `to` is rolled forward by 24h so the day is inclusive.
 	if !q.To.Equal(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)) {

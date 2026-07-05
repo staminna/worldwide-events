@@ -30,6 +30,7 @@ func (t *Ticketmaster) Source() model.Source { return model.SourceTicketmaster }
 // Ticketmaster Discovery API segment IDs (stable per their docs).
 var tmSegmentIDs = map[model.Category]string{
 	model.CategoryMusic:    "KZFzniwnSyZfZ7v7nJ",
+	model.CategoryArts:     "KZFzniwnSyZfZ7v7na", // Arts & Theatre
 	model.CategoryBusiness: "KZFzniwnSyZfZ7v7n1", // Miscellaneous (closest fit; Discovery has no "business" segment)
 }
 

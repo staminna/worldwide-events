@@ -34,19 +34,20 @@ type Category string
 const (
 	CategoryTech     Category = "tech"
 	CategoryMusic    Category = "music"
+	CategoryArts     Category = "arts"
 	CategoryBusiness Category = "business"
 )
 
 func (c Category) Valid() bool {
 	switch c {
-	case CategoryTech, CategoryMusic, CategoryBusiness:
+	case CategoryTech, CategoryMusic, CategoryArts, CategoryBusiness:
 		return true
 	}
 	return false
 }
 
 func AllCategories() []Category {
-	return []Category{CategoryTech, CategoryMusic, CategoryBusiness}
+	return []Category{CategoryTech, CategoryMusic, CategoryArts, CategoryBusiness}
 }
 
 type Venue struct {
@@ -74,11 +75,17 @@ type Event struct {
 	EndsAt      *time.Time `json:"endsAt,omitempty"`
 	Venue       Venue      `json:"venue"`
 	City        string     `json:"city"`
-	Country     string     `json:"country"`
-	URL         string     `json:"url"`
-	ImageURL    string     `json:"imageUrl,omitempty"`
-	Price       *Price     `json:"price,omitempty"`
-	ScrapedAt   time.Time  `json:"scrapedAt"`
+	// CityID is the catalog city the event was scraped for (see
+	// configs/cities.yaml), while City holds the venue's own locality for
+	// display — e.g. a Carnaxide event scraped for Lisbon keeps City
+	// "Carnaxide" with CityID "lisbon". Queries filter on CityID so venue
+	// spellings ("Lisboa", "Lisbon") don't fragment a city's feed.
+	CityID    string    `json:"cityId,omitempty"`
+	Country   string    `json:"country"`
+	URL       string    `json:"url"`
+	ImageURL  string    `json:"imageUrl,omitempty"`
+	Price     *Price    `json:"price,omitempty"`
+	ScrapedAt time.Time `json:"scrapedAt"`
 }
 
 func MakeID(src Source, sourceID string) string {

@@ -177,6 +177,57 @@ func TestQueryFiltersAndPagination(t *testing.T) {
 	})
 }
 
+func TestQueryNotEndedBefore(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+
+	withEnd := func(e model.Event, ends time.Time) model.Event {
+		e.EndsAt = &ends
+		return e
+	}
+	events := []model.Event{
+		// Finished yesterday → hidden.
+		withEnd(sampleEvent("done", "Finished Gig", "Lisbon", model.CategoryMusic, model.SourceLuma, now.Add(-30*time.Hour), "https://img/a"), now.Add(-26*time.Hour)),
+		// Multi-day festival: started 2 days ago, ends tomorrow → shown.
+		withEnd(sampleEvent("fest", "Festival", "Lisbon", model.CategoryMusic, model.SourceLuma, now.Add(-48*time.Hour), "https://img/b"), now.Add(24*time.Hour)),
+		// No end time, started 1h ago → within grace window, shown.
+		sampleEvent("live", "Live Now", "Lisbon", model.CategoryMusic, model.SourceLuma, now.Add(-time.Hour), "https://img/c"),
+		// No end time, started yesterday → past grace window, hidden.
+		sampleEvent("old", "Old Show", "Lisbon", model.CategoryMusic, model.SourceLuma, now.Add(-24*time.Hour), "https://img/d"),
+		// Starts tomorrow → shown.
+		sampleEvent("next", "Tomorrow", "Lisbon", model.CategoryMusic, model.SourceLuma, now.Add(24*time.Hour), "https://img/e"),
+	}
+	if err := st.UpsertEvents(ctx, events); err != nil {
+		t.Fatalf("UpsertEvents: %v", err)
+	}
+
+	got, total, _, err := st.Query(ctx, Query{NotEndedBefore: now})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3 (fest, live, next)", total)
+	}
+	titles := make([]string, len(got))
+	for i, e := range got {
+		titles[i] = e.Title
+	}
+	// Still sorted by start date ascending: ongoing first, then upcoming.
+	want := []string{"Festival", "Live Now", "Tomorrow"}
+	for i := range want {
+		if i >= len(titles) || titles[i] != want[i] {
+			t.Fatalf("titles = %v, want %v", titles, want)
+		}
+	}
+
+	// Without the filter every event is returned.
+	_, total, _, _ = st.Query(ctx, Query{})
+	if total != 5 {
+		t.Errorf("unfiltered total = %d, want 5", total)
+	}
+}
+
 func TestQueryEmptyMaxScraped(t *testing.T) {
 	st := newTestStore(t)
 	_, total, maxT, err := st.Query(context.Background(), Query{})
@@ -293,5 +344,84 @@ func TestClearImageURLsMatching(t *testing.T) {
 	// Empty pattern slice is a no-op.
 	if n, err := st.ClearImageURLsMatching(ctx, nil); err != nil || n != 0 {
 		t.Errorf("empty patterns: n=%d err=%v", n, err)
+	}
+}
+
+// Regression: events are stored with the venue's own locality in City
+// ("Lisboa", "Carnaxide"), so a feed keyed on the catalog name missed most
+// of a city's events. Queries must go through CityID instead.
+func TestQueryByCityID(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 6, 10, 18, 0, 0, 0, time.UTC)
+
+	lisboa := sampleEvent("v1", "Fado Night", "Lisboa", model.CategoryMusic, model.SourceViralagenda, base, "https://img/1.jpg")
+	lisboa.CityID = "lisbon"
+	carnaxide := sampleEvent("v2", "Teatro", "Carnaxide", model.CategoryArts, model.SourceViralagenda, base, "https://img/2.jpg")
+	carnaxide.CityID = "lisbon"
+	porto := sampleEvent("v3", "Indie Gig", "Porto", model.CategoryMusic, model.SourceViralagenda, base, "https://img/3.jpg")
+	porto.CityID = "porto"
+
+	if err := st.UpsertEvents(ctx, []model.Event{lisboa, carnaxide, porto}); err != nil {
+		t.Fatalf("UpsertEvents: %v", err)
+	}
+
+	got, total, _, err := st.Query(ctx, Query{CityID: "lisbon"})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if total != 2 || len(got) != 2 {
+		t.Fatalf("lisbon: total=%d len=%d, want 2 (venue spellings must not fragment the feed)", total, len(got))
+	}
+	for _, e := range got {
+		if e.CityID != "lisbon" {
+			t.Errorf("event %q cityId = %q, want lisbon", e.Title, e.CityID)
+		}
+	}
+
+	// Display-city match still works for free-text lookups.
+	got, _, _, err = st.Query(ctx, Query{City: "Carnaxide"})
+	if err != nil {
+		t.Fatalf("Query by City: %v", err)
+	}
+	if len(got) != 1 || got[0].Title != "Teatro" {
+		t.Errorf("City=Carnaxide got %d events", len(got))
+	}
+}
+
+// A database created before the city_id column existed must be migrated in
+// place by Init.
+func TestInitMigratesCityID(t *testing.T) {
+	dir := t.TempDir()
+	st, err := NewSQLite(dir + "/old.db")
+	if err != nil {
+		t.Fatalf("NewSQLite: %v", err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	// Recreate the pre-city_id schema by hand.
+	if _, err := st.db.ExecContext(ctx, `
+		CREATE TABLE events (
+			id TEXT PRIMARY KEY, source TEXT NOT NULL, source_id TEXT NOT NULL,
+			title TEXT NOT NULL, category TEXT NOT NULL, starts_at INTEGER NOT NULL,
+			ends_at INTEGER, city TEXT NOT NULL, country TEXT NOT NULL,
+			url TEXT NOT NULL, payload TEXT NOT NULL, scraped_at INTEGER NOT NULL
+		)`); err != nil {
+		t.Fatalf("create legacy schema: %v", err)
+	}
+
+	if err := st.Init(ctx); err != nil {
+		t.Fatalf("Init on legacy db: %v", err)
+	}
+
+	ev := sampleEvent("m1", "Migrated", "Lisboa", model.CategoryMusic, model.SourceLuma, time.Date(2026, 6, 10, 18, 0, 0, 0, time.UTC), "")
+	ev.CityID = "lisbon"
+	if err := st.UpsertEvents(ctx, []model.Event{ev}); err != nil {
+		t.Fatalf("UpsertEvents after migration: %v", err)
+	}
+	got, total, _, err := st.Query(ctx, Query{CityID: "lisbon"})
+	if err != nil || total != 1 || len(got) != 1 {
+		t.Fatalf("query after migration: total=%d len=%d err=%v", total, len(got), err)
 	}
 }

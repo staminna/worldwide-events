@@ -1,0 +1,20 @@
+services:
+  eventscraper:
+    image: eventscraper:latest
+    build: .
+    container_name: eventscraper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8080"
+    env_file: .env
+    volumes:
+      - eventscraper-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  eventscraper-data:

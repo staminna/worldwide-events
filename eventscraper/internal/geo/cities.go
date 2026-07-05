@@ -2,6 +2,7 @@ package geo
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -28,6 +29,18 @@ func (c City) LumaSlug() string {
 		return c.LumaCitySlug
 	}
 	return c.ID
+}
+
+// KmBetween returns the great-circle (haversine) distance in kilometres
+// between two coordinates.
+func KmBetween(lat1, lon1, lat2, lon2 float64) float64 {
+	const earthRadiusKm = 6371.0
+	const rad = math.Pi / 180
+	dLat := (lat2 - lat1) * rad
+	dLon := (lon2 - lon1) * rad
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*rad)*math.Cos(lat2*rad)*math.Sin(dLon/2)*math.Sin(dLon/2)
+	return 2 * earthRadiusKm * math.Asin(math.Sqrt(a))
 }
 
 type fileShape struct {

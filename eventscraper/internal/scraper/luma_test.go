@@ -9,7 +9,7 @@ import (
 )
 
 func TestLumaToEventValid(t *testing.T) {
-	city := geo.City{Name: "Lisbon", Country: "PT"}
+	city := geo.City{Name: "Lisbon", Country: "PT", Lat: 38.7223, Lon: -9.1393}
 	entry := lumaEntry{
 		Event: lumaEvent{
 			APIID:   "evt_123",
@@ -55,13 +55,15 @@ func TestLumaToEventValid(t *testing.T) {
 }
 
 func TestLumaToEventAbsoluteURLPreserved(t *testing.T) {
-	city := geo.City{Name: "Lisbon", Country: "PT"}
+	city := geo.City{Name: "Lisbon", Country: "PT", Lat: 38.7223, Lon: -9.1393}
 	entry := lumaEntry{Event: lumaEvent{
 		APIID:   "a",
 		Name:    "n",
 		URL:     "https://lu.ma/foo",
 		StartAt: "2026-06-10T18:00:00Z",
 	}}
+	entry.Event.Coord.Latitude = 38.7
+	entry.Event.Coord.Longitude = -9.14
 	ev, ok := lumaToEvent(entry, city, model.CategoryTech)
 	if !ok {
 		t.Fatal("not built")
@@ -72,24 +74,51 @@ func TestLumaToEventAbsoluteURLPreserved(t *testing.T) {
 }
 
 func TestLumaToEventFallbackToCityFields(t *testing.T) {
-	city := geo.City{Name: "Lisbon", Country: "PT"}
+	city := geo.City{Name: "Lisbon", Country: "PT", Lat: 38.7223, Lon: -9.1393}
 	entry := lumaEntry{Event: lumaEvent{
 		APIID:   "a",
 		Name:    "n",
 		URL:     "x",
 		StartAt: "2026-06-10T18:00:00Z",
 	}}
+	entry.Event.Coord.Latitude = 38.7
+	entry.Event.Coord.Longitude = -9.14
 	ev, _ := lumaToEvent(entry, city, model.CategoryTech)
 	if ev.City != "Lisbon" || ev.Country != "PT" {
 		t.Errorf("city/country = %q/%q (should fall back to catalog city)", ev.City, ev.Country)
 	}
 }
 
+func TestLumaToEventGeoFilter(t *testing.T) {
+	city := geo.City{Name: "Lisbon", Country: "PT", Lat: 38.7223, Lon: -9.1393}
+	base := lumaEvent{APIID: "a", Name: "n", URL: "x", StartAt: "2026-06-10T18:00:00Z"}
+
+	// No coordinates (online-only event) → dropped.
+	if _, ok := lumaToEvent(lumaEntry{Event: base}, city, model.CategoryTech); ok {
+		t.Error("event without coordinates should be dropped")
+	}
+
+	// Coimbra is ~180km from Lisbon → dropped. Lu.ma's discover feed mixes in
+	// region-wide (and, for unknown slugs, IP-located) events.
+	far := base
+	far.Coord.Latitude, far.Coord.Longitude = 40.2033, -8.4103
+	if _, ok := lumaToEvent(lumaEntry{Event: far}, city, model.CategoryTech); ok {
+		t.Error("event ~180km away should be dropped")
+	}
+
+	// Cascais is ~25km from Lisbon → kept.
+	near := base
+	near.Coord.Latitude, near.Coord.Longitude = 38.6979, -9.4215
+	if _, ok := lumaToEvent(lumaEntry{Event: near}, city, model.CategoryTech); !ok {
+		t.Error("event ~25km away should be kept")
+	}
+}
+
 func TestLumaToEventInvalid(t *testing.T) {
 	cases := []lumaEntry{
-		{Event: lumaEvent{Name: "n", StartAt: ""}},                  // missing start
-		{Event: lumaEvent{Name: "", StartAt: "2026-06-10T18:00Z"}},  // missing name
-		{Event: lumaEvent{Name: "n", StartAt: "not-rfc3339"}},        // bad date
+		{Event: lumaEvent{Name: "n", StartAt: ""}},                 // missing start
+		{Event: lumaEvent{Name: "", StartAt: "2026-06-10T18:00Z"}}, // missing name
+		{Event: lumaEvent{Name: "n", StartAt: "not-rfc3339"}},      // bad date
 	}
 	for i, e := range cases {
 		if _, ok := lumaToEvent(e, geo.City{}, model.CategoryTech); ok {

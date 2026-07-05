@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../models/event.dart';
 import '../state/providers.dart';
+import '../widgets/category_style.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -22,89 +23,86 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final eventsAsync = ref.watch(eventsProvider);
+    final feed = ref.watch(eventFeedProvider);
 
-    return eventsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
-      data: (list) {
-        final placed = list.events
-            .where((e) => e.venue.lat != 0 && e.venue.lon != 0)
-            .toList();
-        return Stack(
+    if (feed.loading && feed.events.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (feed.error != null && feed.events.isEmpty) {
+      return Center(child: Text('Error: ${feed.error}'));
+    }
+    final placed = feed.events
+        .where((e) => e.venue.lat != 0 && e.venue.lon != 0)
+        .toList();
+    return Stack(
+      children: [
+        FlutterMap(
+          mapController: _controller,
+          options: MapOptions(
+            initialCenter: _initialCenter(placed),
+            initialZoom: placed.length > 50 ? 2.5 : 4,
+            minZoom: 1,
+            maxZoom: 18,
+            onTap: (_, __) => setState(() => _selected = null),
+          ),
           children: [
-            FlutterMap(
-              mapController: _controller,
-              options: MapOptions(
-                initialCenter: _initialCenter(placed),
-                initialZoom: placed.length > 50 ? 2.5 : 4,
-                minZoom: 1,
-                maxZoom: 18,
-                onTap: (_, __) => setState(() => _selected = null),
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate:
-                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.jorgenunes.eventscraper_app',
-                  maxNativeZoom: 19,
-                ),
-                MarkerClusterLayerWidget(
-                  options: MarkerClusterLayerOptions(
-                    maxClusterRadius: 60,
-                    size: const Size(46, 46),
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.all(40),
-                    markers: [
-                      for (final e in placed)
-                        Marker(
-                          point: LatLng(e.venue.lat, e.venue.lon),
-                          width: 46,
-                          height: 52,
-                          // Anchor the teardrop's tip on the coordinate: with
-                          // topCenter the whole marker sits above the point, so
-                          // its bottom tip lands exactly on the location.
-                          alignment: Alignment.topCenter,
-                          child: _MapMarker(
-                            event: e,
-                            selected: _selected?.id == e.id,
-                            onTap: () => setState(() => _selected = e),
-                          ),
-                        ),
-                    ],
-                    builder: (context, markers) =>
-                        _ClusterBubble(count: markers.length),
-                  ),
-                ),
-                const RichAttributionWidget(
-                  attributions: [
-                    TextSourceAttribution(
-                      '© OpenStreetMap contributors',
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.jorgenunes.eventscraper_app',
+              maxNativeZoom: 19,
+            ),
+            MarkerClusterLayerWidget(
+              options: MarkerClusterLayerOptions(
+                maxClusterRadius: 60,
+                size: const Size(46, 46),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.all(40),
+                markers: [
+                  for (final e in placed)
+                    Marker(
+                      point: LatLng(e.venue.lat, e.venue.lon),
+                      width: 46,
+                      height: 52,
+                      // Anchor the teardrop's tip on the coordinate: with
+                      // topCenter the whole marker sits above the point, so
+                      // its bottom tip lands exactly on the location.
+                      alignment: Alignment.topCenter,
+                      child: _MapMarker(
+                        event: e,
+                        selected: _selected?.id == e.id,
+                        onTap: () => setState(() => _selected = e),
+                      ),
                     ),
-                  ],
-                ),
+                ],
+                builder: (context, markers) =>
+                    _ClusterBubble(count: markers.length),
+              ),
+            ),
+            const RichAttributionWidget(
+              attributions: [
+                TextSourceAttribution('© OpenStreetMap contributors'),
               ],
             ),
-            Positioned(
-              top: 12,
-              left: 12,
-              right: 12,
-              child: _MapTopBar(count: placed.length, total: list.events.length),
-            ),
-            if (_selected != null)
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: 12,
-                child: _SelectedEventCard(
-                  event: _selected!,
-                  onClose: () => setState(() => _selected = null),
-                  onOpen: () => context.push('/event/${_selected!.id}'),
-                ),
-              ),
           ],
-        );
-      },
+        ),
+        Positioned(
+          top: 12,
+          left: 12,
+          right: 12,
+          child: _MapTopBar(count: placed.length, total: feed.events.length),
+        ),
+        if (_selected != null)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: _SelectedEventCard(
+              event: _selected!,
+              onClose: () => setState(() => _selected = null),
+              onOpen: () => context.push('/event/${_selected!.id}'),
+            ),
+          ),
+      ],
     );
   }
 
@@ -133,18 +131,8 @@ class _MapMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final color = switch (event.category) {
-      EventCategory.tech => cs.primary,
-      EventCategory.music => cs.secondary,
-      EventCategory.business => cs.tertiary,
-      _ => cs.outline,
-    };
-    final glyph = switch (event.category) {
-      EventCategory.tech => Icons.code,
-      EventCategory.music => Icons.music_note,
-      EventCategory.business => Icons.business_center,
-      _ => Icons.place,
-    };
+    final color = categoryColor(cs, event.category);
+    final glyph = categoryIcon(event.category);
     final scale = selected ? 1.18 : 1.0;
     // A modern teardrop pin: a colored map-pin glyph with a white outline and
     // a recessed white disc holding the category icon. Bottom-aligned so the
@@ -272,9 +260,9 @@ class _MapTopBar extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 '($hidden without coordinates)',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
             ],
           ],
@@ -301,22 +289,15 @@ class _SelectedEventCard extends StatelessWidget {
     return Card(
       elevation: 6,
       child: ListTile(
-        title: Text(event.title,
-            maxLines: 2, overflow: TextOverflow.ellipsis),
+        title: Text(event.title, maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           '${fmt.format(event.startsAt.toLocal())} • ${event.city}',
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              icon: const Icon(Icons.open_in_new),
-              onPressed: onOpen,
-            ),
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: onClose,
-            ),
+            IconButton(icon: const Icon(Icons.open_in_new), onPressed: onOpen),
+            IconButton(icon: const Icon(Icons.close), onPressed: onClose),
           ],
         ),
       ),

@@ -171,7 +171,7 @@ func scrapeCmd() *cobra.Command {
 			sch := scheduler.New(st, reg, cat)
 			sch.Run(ctx, src, city, cats)
 			// Re-read what we just persisted so we can report counts.
-			rows, _, _, err := st.Query(ctx, store.Query{Source: src, City: city.Name, Limit: 2000})
+			rows, _, _, err := st.Query(ctx, store.Query{Source: src, CityID: city.ID, Limit: 2000})
 			if err != nil {
 				return fmt.Errorf("query: %w", err)
 			}

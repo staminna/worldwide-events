@@ -41,7 +41,7 @@ cp .env.example .env          # optional, all defaults work
 go run ./cmd/eventscraper serve
 ```
 
-The first cold start kicks off a background warm-up that scrapes all 80
+The first cold start kicks off a background warm-up that scrapes all 160+
 configured cities across all three free sources. You can use the API
 immediately — events appear in the cache as the warm-up progresses, and the
 Flutter app auto-polls until they show up.
@@ -75,7 +75,7 @@ All configuration is environment-variable based — see `eventscraper/.env.examp
 | `DB_PATH`              | `./eventscraper.db`              | SQLite file                                                |
 | `CITIES_PATH`          | `./configs/cities.yaml`          | City catalog                                               |
 | `ALLOWED_ORIGIN`       | `*`                              | CORS allow-origin                                          |
-| `WARMUP_CITIES`        | `0` (= all 80)                   | How many cities to warm up on startup                      |
+| `WARMUP_CITIES`        | `0` (= all 160+)                 | How many cities to warm up on startup                      |
 | `FREE_ONLY`            | `true`                           | When `false`, also registers Ticketmaster / Meetup         |
 | `TICKETMASTER_API_KEY` | unset                            | Required if you flip `FREE_ONLY=false` and want TM         |
 | `MEETUP_OAUTH_TOKEN`   | unset                            | Required if you want Meetup (paid OAuth client needed)     |
@@ -103,6 +103,7 @@ you can pre-populate the cache before starting the server.
 | GET    | `/cities`          | Configured cities                                                           |
 | GET    | `/sources`         | Source registration + last scrape per (source, city)                        |
 | GET    | `/events`          | Filterable list. Params: `city, category, source, from, to, q, limit, offset` |
+|        |                    | Sorted by start date (soonest first). Finished events are hidden by default; pass `from` to browse history. |
 | GET    | `/events/{id}`     | Single event                                                                |
 | GET    | `/img?u=<url>`     | CORS-friendly image proxy (used by the Flutter client)                      |
 | POST   | `/refresh`         | Force re-scrape. Gated by `ADMIN_TOKEN` if set.                             |

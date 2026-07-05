@@ -2,8 +2,10 @@ import 'package:dio/dio.dart';
 
 import '../models/event.dart';
 
+// Production backend by default; override for local development with
+// --dart-define=API_BASE=http://localhost:8080
 const String kApiBase = String.fromEnvironment('API_BASE',
-    defaultValue: 'http://localhost:8080');
+    defaultValue: 'https://api.iamjorgenunes.com/eventscraper');
 
 /// Wraps an upstream image URL with the backend's CORS-friendly proxy.
 /// Empty input returns empty. Already-proxied URLs are returned untouched.

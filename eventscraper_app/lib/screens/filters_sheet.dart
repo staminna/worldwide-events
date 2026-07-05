@@ -37,18 +37,39 @@ class FiltersSheet extends ConsumerWidget {
           Text('City', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           citiesAsync.when(
-            data: (cities) => DropdownButtonFormField<String?>(
-              initialValue: filters.cityId,
-              decoration: const InputDecoration(border: OutlineInputBorder()),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('All cities')),
-                ...cities.map((c) => DropdownMenuItem(
+            data: (cities) {
+              final sorted = [...cities]
+                ..sort(
+                  (a, b) =>
+                      a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+                );
+              // Type-to-filter menu: with 150+ cities a plain dropdown is
+              // unusable, so let the user narrow it down by typing.
+              return DropdownMenu<String?>(
+                // Re-key when the selection changes elsewhere (e.g. "Clear
+                // filters") so the menu's internal text field resets too.
+                key: ValueKey(filters.cityId),
+                initialSelection: filters.cityId,
+                enableFilter: true,
+                requestFocusOnTap: true,
+                expandedInsets: EdgeInsets.zero,
+                hintText: 'All cities',
+                leadingIcon: const Icon(Icons.location_on_outlined),
+                menuHeight: 320,
+                dropdownMenuEntries: [
+                  const DropdownMenuEntry<String?>(
+                    value: null,
+                    label: 'All cities',
+                  ),
+                  for (final c in sorted)
+                    DropdownMenuEntry<String?>(
                       value: c.id,
-                      child: Text('${c.name}, ${c.country}'),
-                    )),
-              ],
-              onChanged: notifier.setCity,
-            ),
+                      label: '${c.name}, ${c.country}',
+                    ),
+                ],
+                onSelected: notifier.setCity,
+              );
+            },
             loading: () => const LinearProgressIndicator(),
             error: (e, _) => Text('Failed to load cities: $e'),
           ),
@@ -63,8 +84,9 @@ class FiltersSheet extends ConsumerWidget {
                 selected: filters.category == null,
                 onSelected: (_) => notifier.setCategory(null),
               ),
-              for (final c in EventCategory.values
-                  .where((c) => c != EventCategory.unknown))
+              for (final c in EventCategory.values.where(
+                (c) => c != EventCategory.unknown,
+              ))
                 ChoiceChip(
                   label: Text(categoryLabel(c)),
                   selected: filters.category == c,
@@ -106,9 +128,11 @@ class FiltersSheet extends ConsumerWidget {
           const SizedBox(height: 8),
           OutlinedButton.icon(
             icon: const Icon(Icons.date_range),
-            label: Text(filters.from == null && filters.to == null
-                ? 'Any date'
-                : '${_fmt(filters.from)} → ${_fmt(filters.to)}'),
+            label: Text(
+              filters.from == null && filters.to == null
+                  ? 'Any date'
+                  : '${_fmt(filters.from)} → ${_fmt(filters.to)}',
+            ),
             onPressed: () async {
               final now = DateTime.now();
               final result = await showDateRangePicker(
@@ -144,6 +168,7 @@ class FiltersSheet extends ConsumerWidget {
     );
   }
 
-  String _fmt(DateTime? d) =>
-      d == null ? '—' : '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _fmt(DateTime? d) => d == null
+      ? '—'
+      : '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }

@@ -37,12 +37,14 @@ CREATE TABLE IF NOT EXISTS events (
     starts_at    INTEGER NOT NULL,
     ends_at      INTEGER,
     city         TEXT NOT NULL,
+    city_id      TEXT NOT NULL DEFAULT '',
     country      TEXT NOT NULL,
     url          TEXT NOT NULL,
     payload      TEXT NOT NULL,
     scraped_at   INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_city_cat_start ON events(city, category, starts_at);
+CREATE INDEX IF NOT EXISTS idx_events_cityid_cat_start ON events(city_id, category, starts_at);
 CREATE INDEX IF NOT EXISTS idx_events_source_city    ON events(source, city);
 CREATE INDEX IF NOT EXISTS idx_events_starts_at      ON events(starts_at);
 CREATE INDEX IF NOT EXISTS idx_events_scraped_at     ON events(scraped_at);
@@ -59,7 +61,26 @@ CREATE TABLE IF NOT EXISTS scrapes (
 `
 
 func (s *SQLite) Init(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, schema)
+	// Databases created before the city_id column existed need the ALTER
+	// first, or the CREATE INDEX on city_id in schema fails.
+	var hasCityID int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('events') WHERE name = 'city_id'`,
+	).Scan(&hasCityID)
+	if err == nil && hasCityID == 0 {
+		var hasEvents int
+		_ = s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'events'`,
+		).Scan(&hasEvents)
+		if hasEvents > 0 {
+			if _, err := s.db.ExecContext(ctx,
+				`ALTER TABLE events ADD COLUMN city_id TEXT NOT NULL DEFAULT ''`,
+			); err != nil {
+				return fmt.Errorf("migrate city_id: %w", err)
+			}
+		}
+	}
+	_, err = s.db.ExecContext(ctx, schema)
 	return err
 }
 
@@ -75,14 +96,15 @@ func (s *SQLite) UpsertEvents(ctx context.Context, events []model.Event) error {
 	}
 	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, `
-        INSERT INTO events (id, source, source_id, title, category, starts_at, ends_at, city, country, url, payload, scraped_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        INSERT INTO events (id, source, source_id, title, category, starts_at, ends_at, city, city_id, country, url, payload, scraped_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
             title=excluded.title,
             category=excluded.category,
             starts_at=excluded.starts_at,
             ends_at=excluded.ends_at,
             city=excluded.city,
+            city_id=excluded.city_id,
             country=excluded.country,
             url=excluded.url,
             payload=excluded.payload,
@@ -104,7 +126,7 @@ func (s *SQLite) UpsertEvents(ctx context.Context, events []model.Event) error {
 		}
 		if _, err := stmt.ExecContext(ctx,
 			e.ID, string(e.Source), e.SourceID, e.Title, string(e.Category),
-			e.StartsAt.Unix(), endsAt, e.City, e.Country, e.URL, string(payload), e.ScrapedAt.Unix(),
+			e.StartsAt.Unix(), endsAt, e.City, e.CityID, e.Country, e.URL, string(payload), e.ScrapedAt.Unix(),
 		); err != nil {
 			return err
 		}
@@ -128,11 +150,19 @@ func (s *SQLite) GetEvent(ctx context.Context, id string) (model.Event, bool, er
 	return e, true, nil
 }
 
+// noEndGrace is how long an event without an explicit end time is assumed to
+// keep running after it starts, for the purposes of Query.NotEndedBefore.
+const noEndGrace = 3 * time.Hour
+
 func (s *SQLite) Query(ctx context.Context, q Query) ([]model.Event, int, time.Time, error) {
 	var (
 		conds []string
 		args  []any
 	)
+	if q.CityID != "" {
+		conds = append(conds, "city_id = ?")
+		args = append(args, q.CityID)
+	}
 	if q.City != "" {
 		conds = append(conds, "city = ?")
 		args = append(args, q.City)
@@ -148,6 +178,10 @@ func (s *SQLite) Query(ctx context.Context, q Query) ([]model.Event, int, time.T
 	if !q.From.IsZero() {
 		conds = append(conds, "starts_at >= ?")
 		args = append(args, q.From.Unix())
+	}
+	if !q.NotEndedBefore.IsZero() {
+		conds = append(conds, "COALESCE(ends_at, starts_at + ?) >= ?")
+		args = append(args, int64(noEndGrace.Seconds()), q.NotEndedBefore.Unix())
 	}
 	if !q.To.IsZero() {
 		conds = append(conds, "starts_at <= ?")
@@ -180,7 +214,7 @@ func (s *SQLite) Query(ctx context.Context, q Query) ([]model.Event, int, time.T
 
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
         SELECT payload FROM events %s
-        ORDER BY starts_at ASC
+        ORDER BY starts_at ASC, id ASC
         LIMIT ? OFFSET ?
     `, where), pagedArgs...)
 	if err != nil {

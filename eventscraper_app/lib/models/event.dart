@@ -14,12 +14,12 @@ class City {
   });
 
   factory City.fromJson(Map<String, dynamic> json) => City(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        country: json['country'] as String,
-        lat: (json['lat'] as num?)?.toDouble() ?? 0,
-        lon: (json['lon'] as num?)?.toDouble() ?? 0,
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    country: json['country'] as String,
+    lat: (json['lat'] as num?)?.toDouble() ?? 0,
+    lon: (json['lon'] as num?)?.toDouble() ?? 0,
+  );
 }
 
 class Venue {
@@ -47,17 +47,30 @@ class Price {
   final String currency;
   final bool free;
 
-  const Price({this.min = 0, this.max = 0, this.currency = '', this.free = false});
+  const Price({
+    this.min = 0,
+    this.max = 0,
+    this.currency = '',
+    this.free = false,
+  });
 
   factory Price.fromJson(Map<String, dynamic> json) => Price(
-        min: (json['min'] as num?)?.toDouble() ?? 0,
-        max: (json['max'] as num?)?.toDouble() ?? 0,
-        currency: json['currency'] as String? ?? '',
-        free: json['free'] as bool? ?? false,
-      );
+    min: (json['min'] as num?)?.toDouble() ?? 0,
+    max: (json['max'] as num?)?.toDouble() ?? 0,
+    currency: json['currency'] as String? ?? '',
+    free: json['free'] as bool? ?? false,
+  );
 }
 
-enum EventSource { eventbrite, songkick, luma, ticketmaster, meetup, unknown }
+enum EventSource {
+  eventbrite,
+  songkick,
+  luma,
+  ticketmaster,
+  meetup,
+  viralagenda,
+  unknown,
+}
 
 EventSource sourceFromString(String s) {
   switch (s) {
@@ -71,6 +84,8 @@ EventSource sourceFromString(String s) {
       return EventSource.ticketmaster;
     case 'meetup':
       return EventSource.meetup;
+    case 'viralagenda':
+      return EventSource.viralagenda;
   }
   return EventSource.unknown;
 }
@@ -87,12 +102,14 @@ String sourceLabel(EventSource s) {
       return 'Ticketmaster';
     case EventSource.meetup:
       return 'Meetup';
+    case EventSource.viralagenda:
+      return 'Viral Agenda';
     case EventSource.unknown:
       return 'Unknown';
   }
 }
 
-enum EventCategory { tech, music, business, unknown }
+enum EventCategory { tech, music, arts, business, unknown }
 
 EventCategory categoryFromString(String? s) {
   switch (s) {
@@ -100,6 +117,8 @@ EventCategory categoryFromString(String? s) {
       return EventCategory.tech;
     case 'music':
       return EventCategory.music;
+    case 'arts':
+      return EventCategory.arts;
     case 'business':
       return EventCategory.business;
   }
@@ -112,6 +131,8 @@ String categoryLabel(EventCategory c) {
       return 'Tech';
     case EventCategory.music:
       return 'Music';
+    case EventCategory.arts:
+      return 'Arts';
     case EventCategory.business:
       return 'Business';
     case EventCategory.unknown:
@@ -155,22 +176,27 @@ class Event {
   });
 
   factory Event.fromJson(Map<String, dynamic> json) => Event(
-        id: json['id'] as String,
-        source: sourceFromString(json['source'] as String? ?? ''),
-        sourceId: json['sourceId'] as String? ?? '',
-        title: json['title'] as String? ?? '',
-        description: json['description'] as String? ?? '',
-        category: categoryFromString(json['category'] as String?),
-        startsAt: DateTime.parse(json['startsAt'] as String),
-        endsAt: json['endsAt'] != null ? DateTime.tryParse(json['endsAt'] as String) : null,
-        venue: Venue.fromJson(json['venue'] as Map<String, dynamic>?),
-        city: json['city'] as String? ?? '',
-        country: json['country'] as String? ?? '',
-        url: json['url'] as String? ?? '',
-        imageUrl: json['imageUrl'] as String? ?? '',
-        price: json['price'] != null ? Price.fromJson(json['price'] as Map<String, dynamic>) : null,
-        scrapedAt: DateTime.tryParse(json['scrapedAt'] as String? ?? '') ?? DateTime.now(),
-      );
+    id: json['id'] as String,
+    source: sourceFromString(json['source'] as String? ?? ''),
+    sourceId: json['sourceId'] as String? ?? '',
+    title: json['title'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    category: categoryFromString(json['category'] as String?),
+    startsAt: DateTime.parse(json['startsAt'] as String),
+    endsAt: json['endsAt'] != null
+        ? DateTime.tryParse(json['endsAt'] as String)
+        : null,
+    venue: Venue.fromJson(json['venue'] as Map<String, dynamic>?),
+    city: json['city'] as String? ?? '',
+    country: json['country'] as String? ?? '',
+    url: json['url'] as String? ?? '',
+    imageUrl: json['imageUrl'] as String? ?? '',
+    price: json['price'] != null
+        ? Price.fromJson(json['price'] as Map<String, dynamic>)
+        : null,
+    scrapedAt:
+        DateTime.tryParse(json['scrapedAt'] as String? ?? '') ?? DateTime.now(),
+  );
 }
 
 class SourceInfo {
@@ -179,9 +205,9 @@ class SourceInfo {
   const SourceInfo({required this.id, required this.configured});
 
   factory SourceInfo.fromJson(Map<String, dynamic> json) => SourceInfo(
-        id: sourceFromString(json['id'] as String? ?? ''),
-        configured: json['configured'] as bool? ?? false,
-      );
+    id: sourceFromString(json['id'] as String? ?? ''),
+    configured: json['configured'] as bool? ?? false,
+  );
 }
 
 class EventList {

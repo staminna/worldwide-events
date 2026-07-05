@@ -1,17 +1,22 @@
 # eventscraper_app
 
-A new Flutter project.
+Flutter client for the eventscraper Go backend.
 
-## Getting Started
+## Backend URL
 
-This project is a starting point for a Flutter application.
+The API base URL is compiled in via `--dart-define=API_BASE=...`
+(see `lib/api/event_api.dart`). It defaults to the production backend at
+`https://api.iamjorgenunes.com/eventscraper`, so a plain `flutter run`
+uses production.
 
-A few resources to get you started if this is your first Flutter project:
+Run against a local backend (`go run ./cmd/eventscraper serve`):
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```sh
+flutter run --dart-define=API_BASE=http://localhost:8080
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Release build (production is already the default):
+
+```sh
+flutter build apk
+```

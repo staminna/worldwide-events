@@ -6,6 +6,8 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -28,7 +30,7 @@ func New(st store.Store, cat *geo.Catalog, reg *scraper.Registry) *mcp.Server {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "search_events",
 		Description: "Search scraped events by city, category, source and/or free text. Returns matching events plus the total number available before the limit was applied.",
-	}, searchEvents(st))
+	}, searchEvents(st, cat))
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_cities",
@@ -46,11 +48,12 @@ func New(st store.Store, cat *geo.Catalog, reg *scraper.Registry) *mcp.Server {
 // SearchEventsInput mirrors the filterable fields of store.Query. Empty fields
 // are treated as "no filter".
 type SearchEventsInput struct {
-	City     string `json:"city,omitempty"     jsonschema:"filter by city name, e.g. London"`
-	Category string `json:"category,omitempty" jsonschema:"one of: tech, music, business"`
-	Source   string `json:"source,omitempty"   jsonschema:"one of: eventbrite, songkick, luma, ticketmaster, meetup"`
-	Search   string `json:"search,omitempty"   jsonschema:"free-text query over event title and description"`
-	Limit    int    `json:"limit,omitempty"    jsonschema:"maximum events to return (1-100, default 20)"`
+	City        string `json:"city,omitempty"        jsonschema:"filter by city name, e.g. London"`
+	Category    string `json:"category,omitempty"    jsonschema:"one of: tech, music, arts, business"`
+	Source      string `json:"source,omitempty"      jsonschema:"one of: eventbrite, songkick, luma, ticketmaster, meetup"`
+	Search      string `json:"search,omitempty"      jsonschema:"free-text query over event title and description"`
+	Limit       int    `json:"limit,omitempty"       jsonschema:"maximum events to return (1-100, default 20)"`
+	IncludePast bool   `json:"includePast,omitempty" jsonschema:"include events that already ended (default false: only upcoming and ongoing events, soonest first)"`
 }
 
 // SearchEventsOutput reports the matched events along with the total count
@@ -61,7 +64,22 @@ type SearchEventsOutput struct {
 	Events []model.Event `json:"events"`
 }
 
-func searchEvents(st store.Store) mcp.ToolHandlerFor[SearchEventsInput, SearchEventsOutput] {
+// resolveCity maps free-text city input onto a catalog city ID ("London",
+// "new york" → "new-york"). Returns "" when nothing in the catalog matches.
+func resolveCity(cat *geo.Catalog, input string) string {
+	slug := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(input)), " ", "-")
+	if c, ok := cat.Get(slug); ok {
+		return c.ID
+	}
+	for _, c := range cat.All() {
+		if strings.EqualFold(c.Name, input) {
+			return c.ID
+		}
+	}
+	return ""
+}
+
+func searchEvents(st store.Store, cat *geo.Catalog) mcp.ToolHandlerFor[SearchEventsInput, SearchEventsOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in SearchEventsInput) (*mcp.CallToolResult, SearchEventsOutput, error) {
 		limit := in.Limit
 		switch {
@@ -71,8 +89,8 @@ func searchEvents(st store.Store) mcp.ToolHandlerFor[SearchEventsInput, SearchEv
 			limit = 100
 		}
 
-		cat := model.Category(in.Category)
-		if in.Category != "" && !cat.Valid() {
+		catFilter := model.Category(in.Category)
+		if in.Category != "" && !catFilter.Valid() {
 			return nil, SearchEventsOutput{}, fmt.Errorf("invalid category %q", in.Category)
 		}
 		src := model.Source(in.Source)
@@ -80,13 +98,26 @@ func searchEvents(st store.Store) mcp.ToolHandlerFor[SearchEventsInput, SearchEv
 			return nil, SearchEventsOutput{}, fmt.Errorf("invalid source %q", in.Source)
 		}
 
-		events, total, _, err := st.Query(ctx, store.Query{
-			City:     in.City,
-			Category: cat,
+		q := store.Query{
+			Category: catFilter,
 			Source:   src,
 			Search:   in.Search,
 			Limit:    limit,
-		})
+		}
+		if in.City != "" {
+			// Prefer the catalog city ID (matches everything scraped for
+			// that city regardless of venue spelling); fall back to the
+			// stored display city for places not in the catalog.
+			if id := resolveCity(cat, in.City); id != "" {
+				q.CityID = id
+			} else {
+				q.City = in.City
+			}
+		}
+		if !in.IncludePast {
+			q.NotEndedBefore = time.Now().UTC()
+		}
+		events, total, _, err := st.Query(ctx, q)
 		if err != nil {
 			return nil, SearchEventsOutput{}, fmt.Errorf("query events: %w", err)
 		}

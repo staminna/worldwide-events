@@ -25,8 +25,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _searchController =
-        TextEditingController(text: ref.read(filtersProvider).search);
+    _searchController = TextEditingController(
+      text: ref.read(filtersProvider).search,
+    );
   }
 
   @override
@@ -41,7 +42,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _pollTimer?.cancel();
     _pollTimer = Timer(const Duration(seconds: 8), () {
       if (!mounted) return;
-      ref.invalidate(eventsProvider);
+      ref.read(eventFeedProvider.notifier).refresh();
     });
   }
 
@@ -60,16 +61,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final eventsAsync = ref.watch(eventsProvider);
+    final feed = ref.watch(eventFeedProvider);
     final filters = ref.watch(filtersProvider);
 
-    eventsAsync.whenData((list) {
-      if (list.events.isEmpty) {
-        _schedulePoll();
-      } else {
-        _cancelPoll();
-      }
-    });
+    if (!feed.loading && feed.error == null && feed.events.isEmpty) {
+      _schedulePoll();
+    } else {
+      _cancelPoll();
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -100,51 +99,75 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async => ref.refresh(eventsProvider.future),
-        child: eventsAsync.when(
-          data: (list) {
-            if (list.events.isEmpty) {
-              return const _BuildingFeedView();
-            }
-            return Column(
-              children: [
-                _SortHeader(count: list.total),
-                Expanded(
-                  child: _EventGrid(
-                    events: list.events,
-                    onTap: (id) => context.push('/event/$id'),
+        onRefresh: () => ref.read(eventFeedProvider.notifier).refresh(),
+        child: _buildBody(feed),
+      ),
+    );
+  }
+
+  Widget _buildBody(EventFeed feed) {
+    if (feed.loading && feed.events.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (feed.error != null && feed.events.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 80),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  const Icon(Icons.cloud_off, size: 56),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Backend unreachable.\n${feed.error}',
+                    textAlign: TextAlign.center,
                   ),
-                ),
-              ],
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            children: [
-              const SizedBox(height: 80),
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.cloud_off, size: 56),
-                      const SizedBox(height: 12),
-                      Text('Backend unreachable.\n$e',
-                          textAlign: TextAlign.center),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: () => ref.invalidate(eventsProvider),
-                        child: const Text('Retry'),
-                      ),
-                    ],
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () =>
+                        ref.read(eventFeedProvider.notifier).refresh(),
+                    child: const Text('Retry'),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
+          ),
+        ],
+      );
+    }
+    if (feed.events.isEmpty) {
+      return const _BuildingFeedView();
+    }
+    return Column(
+      children: [
+        _SortHeader(shown: feed.events.length, count: feed.total),
+        Expanded(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (n) {
+              if (n.metrics.pixels >= n.metrics.maxScrollExtent - 600) {
+                ref.read(eventFeedProvider.notifier).loadMore();
+              }
+              return false;
+            },
+            child: _EventGrid(
+              events: feed.events,
+              onTap: (id) => context.push('/event/$id'),
+            ),
           ),
         ),
-      ),
+        if (feed.loadingMore)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+          ),
+      ],
     );
   }
 
@@ -204,7 +227,9 @@ class _SearchField extends StatelessWidget {
                     splashRadius: 18,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                        minHeight: 24, minWidth: 24),
+                      minHeight: 24,
+                      minWidth: 24,
+                    ),
                     icon: const Icon(Icons.close),
                     onPressed: onClear,
                   ),
@@ -216,7 +241,8 @@ class _SearchField extends StatelessWidget {
 }
 
 class _SortHeader extends StatelessWidget {
-  const _SortHeader({required this.count});
+  const _SortHeader({required this.shown, required this.count});
+  final int shown;
   final int count;
 
   @override
@@ -228,7 +254,9 @@ class _SortHeader extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '${fmt.format(count)} events',
+            shown < count
+                ? '${fmt.format(shown)} of ${fmt.format(count)} events'
+                : '${fmt.format(count)} events',
             style: Theme.of(context).textTheme.titleSmall,
           ),
           const Spacer(),
@@ -236,9 +264,9 @@ class _SortHeader extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             'Sorted by date • soonest first',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
       ),
@@ -263,15 +291,16 @@ class _EventGrid extends StatelessWidget {
         final crossAxisCount = available >= 1100
             ? 3
             : available >= 720
-                ? 2
-                : 1;
+            ? 2
+            : 1;
 
-        final contentWidth =
-            available > _maxContentWidth ? _maxContentWidth : available;
+        final contentWidth = available > _maxContentWidth
+            ? _maxContentWidth
+            : available;
         final horizontalPad = (available - contentWidth) / 2;
 
-        final cellWidth = (contentWidth - (_gap * 2) -
-                (_gap * (crossAxisCount - 1))) /
+        final cellWidth =
+            (contentWidth - (_gap * 2) - (_gap * (crossAxisCount - 1))) /
             crossAxisCount;
         final cellHeight = (cellWidth * 9 / 16) + 158;
         final aspect = cellWidth / cellHeight;
@@ -334,9 +363,9 @@ class _BuildingFeedView extends StatelessWidget {
                 Text(
                   'Pulling the latest events from free sources across\n'
                   'the world. This usually takes under a minute.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
               ],

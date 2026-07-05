@@ -15,6 +15,7 @@ const viralagendaHTML = `<html><head>
 {"@context":"https://schema.org","@graph":[
   {"@type":"Event","name":"ÉDOUARD LOUIS","url":"https://www.viralagenda.com/pt/events/1800632/edouard-louis","startDate":"2026-06-18T18:00:00+01:00","endDate":"2026-06-18","image":"https://cdn.viralagenda.com/img/a.jpg","location":{"@type":"Place","name":"São Luiz Teatro Municipal","address":{"@type":"PostalAddress","streetAddress":"Rua António Maria Cardoso, 38","addressLocality":"Lisboa","addressCountry":"PT"}},"description":"ÉDOUARD LOUIS @ São Luiz"},
   {"@type":["BusinessEvent"],"name":"Startup Summit 2026","url":"https://www.viralagenda.com/pt/events/1811999/startup-summit","startDate":"2026-07-01T09:00:00+01:00","image":["https://cdn.viralagenda.com/img/b.jpg"],"location":{"@type":"Place","name":"LX Factory","address":{"streetAddress":"Rua X","addressLocality":"Lisboa","addressCountry":"PT"}},"description":"networking conference"},
+  {"@type":"MusicEvent","name":"Concerto de Fado","url":"https://www.viralagenda.com/pt/events/1822333/concerto-de-fado","startDate":"2026-07-02T21:00:00+01:00","image":"https://cdn.viralagenda.com/img/c.jpg","location":{"@type":"Place","name":"Casa do Fado","address":{"addressLocality":"Lisboa","addressCountry":"PT"}},"description":"Uma noite de fado"},
   {"@type":"Organization","name":"Not an event"}
 ]}
 </script>
@@ -23,8 +24,8 @@ const viralagendaHTML = `<html><head>
 
 func TestParseViralagendaLD(t *testing.T) {
 	nodes := parseViralagendaLD([]byte(viralagendaHTML))
-	if len(nodes) != 2 {
-		t.Fatalf("got %d event nodes, want 2 (Organization/WebSite filtered out)", len(nodes))
+	if len(nodes) != 3 {
+		t.Fatalf("got %d event nodes, want 3 (Organization/WebSite filtered out)", len(nodes))
 	}
 	if nodes[0].Name != "ÉDOUARD LOUIS" {
 		t.Errorf("node[0].Name = %q", nodes[0].Name)
@@ -56,8 +57,8 @@ func TestViralagendaToEvent(t *testing.T) {
 	if !ev.StartsAt.Equal(time.Date(2026, 6, 18, 17, 0, 0, 0, time.UTC)) {
 		t.Errorf("StartsAt = %v (want 17:00 UTC from +01:00)", ev.StartsAt)
 	}
-	if ev.Category != model.CategoryMusic {
-		t.Errorf("category = %q, want music (cultural catch-all)", ev.Category)
+	if ev.Category != model.CategoryArts {
+		t.Errorf("category = %q, want arts (cultural catch-all)", ev.Category)
 	}
 	if ev.Venue.Name != "São Luiz Teatro Municipal" || ev.City != "Lisboa" {
 		t.Errorf("venue/city = %q/%q", ev.Venue.Name, ev.City)
@@ -72,6 +73,12 @@ func TestViralagendaToEvent(t *testing.T) {
 	bz, _ := viralagendaToEvent(nodes[1], city)
 	if bz.Category != model.CategoryBusiness {
 		t.Errorf("category = %q, want business", bz.Category)
+	}
+
+	// Music inference from the MusicEvent @type / concert keywords.
+	mu, _ := viralagendaToEvent(nodes[2], city)
+	if mu.Category != model.CategoryMusic {
+		t.Errorf("category = %q, want music", mu.Category)
 	}
 }
 

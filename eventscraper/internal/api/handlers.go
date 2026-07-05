@@ -165,7 +165,7 @@ func parseQuery(r *http.Request, cat *geo.Catalog) (store.Query, *geo.City, erro
 		if !ok {
 			return q, nil, errors.New("unknown city")
 		}
-		q.City = c.Name
+		q.CityID = c.ID
 		cityObj = &c
 	}
 	if cs := values.Get("category"); cs != "" {
@@ -189,9 +189,10 @@ func parseQuery(r *http.Request, cat *geo.Catalog) (store.Query, *geo.City, erro
 		}
 		q.From = t
 	} else {
-		// Default: only show events that haven't started yet (UTC day).
-		now := time.Now().UTC()
-		q.From = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		// Default: disregard events that already finished. Ongoing events
+		// (multi-day festivals, shows without an end time within the grace
+		// window) stay visible. An explicit ?from= opts into history.
+		q.NotEndedBefore = time.Now().UTC()
 	}
 	if v := values.Get("to"); v != "" {
 		t, err := time.Parse("2006-01-02", v)

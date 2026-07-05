@@ -83,6 +83,30 @@ func TestLoadAndGet(t *testing.T) {
 	}
 }
 
+// TestShippedCatalog validates the real configs/cities.yaml that ships with
+// the binary: it must parse, and every entry needs a unique id, a name, a
+// country and non-zero coordinates.
+func TestShippedCatalog(t *testing.T) {
+	cat, err := Load(filepath.Join("..", "..", "configs", "cities.yaml"))
+	if err != nil {
+		t.Fatalf("Load shipped catalog: %v", err)
+	}
+	all := cat.All()
+	if len(all) < 100 {
+		t.Fatalf("shipped catalog has %d cities, expected 100+", len(all))
+	}
+	seen := map[string]bool{}
+	for _, c := range all {
+		if seen[c.ID] {
+			t.Errorf("duplicate city id %q", c.ID)
+		}
+		seen[c.ID] = true
+		if c.Name == "" || c.Country == "" || c.Lat == 0 || c.Lon == 0 {
+			t.Errorf("incomplete city entry %q: %+v", c.ID, c)
+		}
+	}
+}
+
 func TestLoadFileErrors(t *testing.T) {
 	if _, err := Load("/nonexistent/path/cities.yaml"); err == nil {
 		t.Error("expected error for missing file")
@@ -91,5 +115,16 @@ func TestLoadFileErrors(t *testing.T) {
 	path := writeTempYAML(t, "cities: [ { id: x, name: y\n  - oops")
 	if _, err := Load(path); err == nil {
 		t.Error("expected error for invalid yaml")
+	}
+}
+
+func TestKmBetween(t *testing.T) {
+	// Lisbon → Porto is ~274km as the crow flies.
+	d := KmBetween(38.7223, -9.1393, 41.1579, -8.6291)
+	if d < 260 || d > 290 {
+		t.Errorf("Lisbon-Porto = %.1fkm, want ~274", d)
+	}
+	if d := KmBetween(38.7, -9.1, 38.7, -9.1); d != 0 {
+		t.Errorf("zero distance = %f", d)
 	}
 }

@@ -832,6 +832,282 @@ cities:
     lon: 22.9444
     eventbrite_slug: greece--thessaloniki
     luma_city_slug: thessaloniki
+  # --- Expansion wave 2 (curated, Eventbrite + Luma slugs only) ---
+  # US second tier
+  - id: washington-dc
+    name: Washington, D.C.
+    country: US
+    lat: 38.9072
+    lon: -77.0369
+    eventbrite_slug: dc--washington
+    luma_city_slug: washington-dc
+  - id: philadelphia
+    name: Philadelphia
+    country: US
+    lat: 39.9526
+    lon: -75.1652
+    eventbrite_slug: pa--philadelphia
+    luma_city_slug: philadelphia
+  - id: atlanta
+    name: Atlanta
+    country: US
+    lat: 33.7490
+    lon: -84.3880
+    eventbrite_slug: ga--atlanta
+    luma_city_slug: atlanta
+  - id: dallas
+    name: Dallas
+    country: US
+    lat: 32.7767
+    lon: -96.7970
+    eventbrite_slug: tx--dallas
+    luma_city_slug: dallas
+  - id: houston
+    name: Houston
+    country: US
+    lat: 29.7604
+    lon: -95.3698
+    eventbrite_slug: tx--houston
+    luma_city_slug: houston
+  - id: denver
+    name: Denver
+    country: US
+    lat: 39.7392
+    lon: -104.9903
+    eventbrite_slug: co--denver
+    luma_city_slug: denver
+  - id: phoenix
+    name: Phoenix
+    country: US
+    lat: 33.4484
+    lon: -112.0740
+    eventbrite_slug: az--phoenix
+    luma_city_slug: phoenix
+  - id: san-diego
+    name: San Diego
+    country: US
+    lat: 32.7157
+    lon: -117.1611
+    eventbrite_slug: ca--san-diego
+    luma_city_slug: san-diego
+  - id: las-vegas
+    name: Las Vegas
+    country: US
+    lat: 36.1699
+    lon: -115.1398
+    eventbrite_slug: nv--las-vegas
+    luma_city_slug: las-vegas
+  - id: portland
+    name: Portland
+    country: US
+    lat: 45.5152
+    lon: -122.6784
+    eventbrite_slug: or--portland
+    luma_city_slug: portland
+  - id: nashville
+    name: Nashville
+    country: US
+    lat: 36.1627
+    lon: -86.7816
+    eventbrite_slug: tn--nashville
+    luma_city_slug: nashville
+  - id: new-orleans
+    name: New Orleans
+    country: US
+    lat: 29.9511
+    lon: -90.0715
+    eventbrite_slug: la--new-orleans
+    luma_city_slug: new-orleans
+  - id: minneapolis
+    name: Minneapolis
+    country: US
+    lat: 44.9778
+    lon: -93.2650
+    eventbrite_slug: mn--minneapolis
+    luma_city_slug: minneapolis
+  - id: detroit
+    name: Detroit
+    country: US
+    lat: 42.3314
+    lon: -83.0458
+    eventbrite_slug: mi--detroit
+    luma_city_slug: detroit
+  # Canada
+  - id: calgary
+    name: Calgary
+    country: CA
+    lat: 51.0447
+    lon: -114.0719
+    eventbrite_slug: canada--calgary
+    luma_city_slug: calgary
+  - id: ottawa
+    name: Ottawa
+    country: CA
+    lat: 45.4215
+    lon: -75.6972
+    eventbrite_slug: canada--ottawa
+    luma_city_slug: ottawa
+  # Latin America
+  - id: bogota
+    name: Bogotá
+    country: CO
+    lat: 4.7110
+    lon: -74.0721
+    eventbrite_slug: colombia--bogota
+    luma_city_slug: bogota
+  - id: medellin
+    name: Medellín
+    country: CO
+    lat: 6.2442
+    lon: -75.5812
+    eventbrite_slug: colombia--medellin
+    luma_city_slug: medellin
+  - id: lima
+    name: Lima
+    country: PE
+    lat: -12.0464
+    lon: -77.0428
+    eventbrite_slug: peru--lima
+    luma_city_slug: lima
+  - id: santiago
+    name: Santiago
+    country: CL
+    lat: -33.4489
+    lon: -70.6693
+    eventbrite_slug: chile--santiago
+    luma_city_slug: santiago
+  - id: montevideo
+    name: Montevideo
+    country: UY
+    lat: -34.9011
+    lon: -56.1645
+    eventbrite_slug: uruguay--montevideo
+    luma_city_slug: montevideo
+  # Asia
+  - id: jakarta
+    name: Jakarta
+    country: ID
+    lat: -6.2088
+    lon: 106.8456
+    eventbrite_slug: indonesia--jakarta
+    luma_city_slug: jakarta
+  - id: kuala-lumpur
+    name: Kuala Lumpur
+    country: MY
+    lat: 3.1390
+    lon: 101.6869
+    eventbrite_slug: malaysia--kuala-lumpur
+    luma_city_slug: kuala-lumpur
+  - id: manila
+    name: Manila
+    country: PH
+    lat: 14.5995
+    lon: 120.9842
+    eventbrite_slug: philippines--manila
+    luma_city_slug: manila
+  - id: taipei
+    name: Taipei
+    country: TW
+    lat: 25.0330
+    lon: 121.5654
+    eventbrite_slug: taiwan--taipei
+    luma_city_slug: taipei
+  - id: ho-chi-minh-city
+    name: Ho Chi Minh City
+    country: VN
+    lat: 10.8231
+    lon: 106.6297
+    eventbrite_slug: vietnam--ho-chi-minh-city
+    luma_city_slug: ho-chi-minh-city
+  - id: hanoi
+    name: Hanoi
+    country: VN
+    lat: 21.0278
+    lon: 105.8342
+    eventbrite_slug: vietnam--hanoi
+    luma_city_slug: hanoi
+  # India
+  - id: hyderabad
+    name: Hyderabad
+    country: IN
+    lat: 17.3850
+    lon: 78.4867
+    eventbrite_slug: india--hyderabad
+    luma_city_slug: hyderabad
+  - id: chennai
+    name: Chennai
+    country: IN
+    lat: 13.0827
+    lon: 80.2707
+    eventbrite_slug: india--chennai
+    luma_city_slug: chennai
+  - id: pune
+    name: Pune
+    country: IN
+    lat: 18.5204
+    lon: 73.8567
+    eventbrite_slug: india--pune
+    luma_city_slug: pune
+  # Middle East
+  - id: abu-dhabi
+    name: Abu Dhabi
+    country: AE
+    lat: 24.4539
+    lon: 54.3773
+    eventbrite_slug: united-arab-emirates--abu-dhabi
+    luma_city_slug: abu-dhabi
+  - id: doha
+    name: Doha
+    country: QA
+    lat: 25.2854
+    lon: 51.5310
+    eventbrite_slug: qatar--doha
+    luma_city_slug: doha
+  - id: riyadh
+    name: Riyadh
+    country: SA
+    lat: 24.7136
+    lon: 46.6753
+    eventbrite_slug: saudi-arabia--riyadh
+    luma_city_slug: riyadh
+  # Africa
+  - id: lagos
+    name: Lagos
+    country: NG
+    lat: 6.5244
+    lon: 3.3792
+    eventbrite_slug: nigeria--lagos
+    luma_city_slug: lagos
+  - id: accra
+    name: Accra
+    country: GH
+    lat: 5.6037
+    lon: -0.1870
+    eventbrite_slug: ghana--accra
+    luma_city_slug: accra
+  - id: casablanca
+    name: Casablanca
+    country: MA
+    lat: 33.5731
+    lon: -7.5898
+    eventbrite_slug: morocco--casablanca
+    luma_city_slug: casablanca
+  # Oceania
+  - id: adelaide
+    name: Adelaide
+    country: AU
+    lat: -34.9285
+    lon: 138.6007
+    eventbrite_slug: australia--adelaide
+    luma_city_slug: adelaide
+  - id: wellington
+    name: Wellington
+    country: NZ
+    lat: -41.2866
+    lon: 174.7756
+    eventbrite_slug: new-zealand--wellington
+    luma_city_slug: wellington
+
   # Portugal districts covered by viralagenda.com/pt. The viralagenda scraper
   # derives its district slug from the city id (PT cities only); lisbon maps to
   # "lisboa" and porto reuses the existing entries above.

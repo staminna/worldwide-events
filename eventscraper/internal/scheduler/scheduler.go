@@ -68,6 +68,12 @@ func (s *Scheduler) Run(ctx context.Context, src model.Source, city geo.City, ca
 			errMsg = err.Error()
 		}
 		if len(events) > 0 {
+			// Stamp the catalog city this scrape ran for. Scrapers keep the
+			// venue's own locality in City ("Lisboa", "Carnaxide"), so this
+			// ID is the only reliable per-city query key.
+			for i := range events {
+				events[i].CityID = city.ID
+			}
 			// Backfill missing images via og:image / twitter:image.
 			s.enricher.BackfillImages(ctx, events)
 			if upErr := s.store.UpsertEvents(ctx, events); upErr != nil {

@@ -237,10 +237,11 @@ func parseViralagendaTime(s string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// viralagendaCategory maps a cultural event onto this project's three buckets.
+// viralagendaCategory maps a cultural event onto this project's buckets.
 // viralagenda has no tech/business taxonomy of its own, so we infer from the
-// schema.org @type and the title/description, defaulting to music — which is
-// this project's arts-and-culture catch-all (see luma.go's category mapping).
+// schema.org @type and the title/description. Concert-like events go to
+// music; everything else (theatre, exhibitions, cinema, dance) defaults to
+// arts, since viralagenda is first and foremost a cultural agenda.
 func viralagendaCategory(n viralagendaNode) model.Category {
 	typ := strings.ToLower(strings.Join(n.Type, " "))
 	text := strings.ToLower(n.Name + " " + n.Description)
@@ -252,8 +253,12 @@ func viralagendaCategory(n viralagendaNode) model.Category {
 	case containsAny(text, "tech", "developer", "hackathon", "programaç", "programac",
 		"código", "codigo", "robót", "robot", "inteligência artificial", "data science"):
 		return model.CategoryTech
-	default:
+	case strings.Contains(typ, "music") ||
+		containsAny(text, "concerto", "concert", "fado", "orquestra", "recital",
+			"dj set", "ao vivo", "live music", "tour", "banda"):
 		return model.CategoryMusic
+	default:
+		return model.CategoryArts
 	}
 }
 

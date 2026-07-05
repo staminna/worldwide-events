@@ -26,6 +26,7 @@ func (e *Eventbrite) Source() model.Source { return model.SourceEventbrite }
 var eventbriteCategoryPath = map[model.Category]string{
 	model.CategoryTech:     "science-and-tech",
 	model.CategoryMusic:    "music",
+	model.CategoryArts:     "arts", // "Performing & Visual Arts" browse page
 	model.CategoryBusiness: "business",
 }
 

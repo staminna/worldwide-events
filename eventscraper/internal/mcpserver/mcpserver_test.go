@@ -105,7 +105,7 @@ func TestSearchEvents(t *testing.T) {
 	st := newStore(t)
 	ev := model.Event{
 		Source: model.SourceLuma, SourceID: "abc", Title: "GoLisbon Meetup",
-		Category: model.CategoryTech, City: "Lisbon", Country: "PT",
+		Category: model.CategoryTech, City: "Lisboa", CityID: "lisbon", Country: "PT",
 		URL: "https://example.com/e", StartsAt: time.Now().Add(24 * time.Hour),
 	}
 	ev.ID = model.MakeID(ev.Source, ev.SourceID)

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../api/event_api.dart';
 import '../models/event.dart';
+import 'category_style.dart';
 
 class EventCard extends StatelessWidget {
   const EventCard({super.key, required this.event, required this.onTap});
@@ -54,9 +55,9 @@ class EventCard extends StatelessWidget {
                     Text(
                       event.title,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            height: 1.2,
-                          ),
+                        fontWeight: FontWeight.w600,
+                        height: 1.2,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -103,9 +104,9 @@ class EventCard extends StatelessWidget {
   }
 
   Widget _placeholder(ColorScheme cs) => Container(
-        color: cs.surfaceContainerHighest,
-        child: Icon(Icons.event, size: 40, color: cs.outline),
-      );
+    color: cs.surfaceContainerHighest,
+    child: Icon(Icons.event, size: 40, color: cs.outline),
+  );
 }
 
 class _CategoryChip extends StatelessWidget {
@@ -115,12 +116,7 @@ class _CategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final color = switch (category) {
-      EventCategory.tech => cs.primary,
-      EventCategory.music => cs.secondary,
-      EventCategory.business => cs.tertiary,
-      _ => cs.outline,
-    };
+    final color = categoryColor(cs, category);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
@@ -129,7 +125,11 @@ class _CategoryChip extends StatelessWidget {
       ),
       child: Text(
         categoryLabel(category),
-        style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 11),
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontSize: 11,
+        ),
       ),
     );
   }
