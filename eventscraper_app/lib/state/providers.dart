@@ -173,3 +173,13 @@ final eventByIdProvider = FutureProvider.autoDispose.family<Event, String>((
 ) async {
   return ref.read(apiProvider).fetchEvent(id);
 });
+
+/// Street address for a venue coordinate, resolved (and cached) by the
+/// backend. Keyed by a record so identical coordinates share one lookup.
+/// Resolves to '' when unknown — the UI simply omits the line.
+final venueAddressProvider = FutureProvider.autoDispose
+    .family<String, ({double lat, double lon, String id})>((ref, key) {
+      return ref
+          .read(apiProvider)
+          .fetchVenueAddress(lat: key.lat, lon: key.lon, eventId: key.id);
+    });

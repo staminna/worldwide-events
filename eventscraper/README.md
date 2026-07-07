@@ -68,6 +68,10 @@ go run ./cmd/eventscraper scrape --source ticketmaster --city london --category 
 |---|---|---|
 | GET | `/healthz` | Liveness probe |
 | GET | `/cities` | Catalog of configured cities |
+| GET | `/geo/reverse?lat=…&lon=…` | Reverse geocode: nearest catalog city + `distanceKm`. With `min_events=N`, walks cities outward (≤15 candidates, ≤500 km) and returns the first with N located upcoming events (+ `locatedEvents`). Powers the app's "near me". |
+| GET | `/geo/address?lat=…&lon=…` | Street address for a coordinate via Nominatim, cached in SQLite forever (negatives retry weekly). Optional `event=<id>` persists the address into that event. Upstream budget is 1 req/s globally (Nominatim policy); per-IP limits are a deliberate non-goal for now. |
+| GET | `/events.geojson` | The feed as a GeoJSON FeatureCollection (same filters as `/events`, only located events, no image requirement, default limit 2000). Feeds `/viz`. |
+| GET | `/viz` | Embedded kepler.gl page over `/events.geojson`: dark basemap, points by category, time-range playback. |
 | GET | `/sources` | Source registration + recent scrape status |
 | GET | `/events` | Filterable list. Query params: `city, category, source, from, to, q, limit, offset` |
 | GET | `/events/{id}` | One event |

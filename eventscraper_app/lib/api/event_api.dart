@@ -90,6 +90,49 @@ class EventApi {
     return list.map(City.fromJson).toList();
   }
 
+  /// Resolves a coordinate to the nearest supported city (reverse geocoding
+  /// against the backend's city catalog). With [minEvents], the backend
+  /// walks cities outward and returns the first whose feed already holds
+  /// that many located events, so an empty city doesn't win on distance.
+  Future<NearestCity> reverseGeocode(
+    double lat,
+    double lon, {
+    int? minEvents,
+  }) async {
+    final res = await _dio.get(
+      '/geo/reverse',
+      queryParameters: {'lat': lat, 'lon': lon, 'min_events': ?minEvents},
+    );
+    final body = res.data as Map<String, dynamic>;
+    return NearestCity.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Fetches a street address for a venue coordinate (backend proxies and
+  /// caches Nominatim). Passing [eventId] lets the backend persist the
+  /// address into the stored event. Returns '' when nothing is known —
+  /// callers treat the address as optional decoration.
+  Future<String> fetchVenueAddress({
+    required double lat,
+    required double lon,
+    String? eventId,
+  }) async {
+    try {
+      final res = await _dio.get(
+        '/geo/address',
+        queryParameters: {
+          'lat': lat,
+          'lon': lon,
+          if (eventId != null && eventId.isNotEmpty) 'event': eventId,
+        },
+      );
+      final body = res.data as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>? ?? const {};
+      return data['address'] as String? ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   Future<List<SourceInfo>> fetchSources() async {
     final res = await _dio.get('/sources');
     final data = res.data as Map<String, dynamic>;

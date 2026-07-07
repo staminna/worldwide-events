@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../models/event.dart';
+import '../state/location.dart';
 import '../state/providers.dart';
 import '../widgets/event_card.dart';
 import 'filters_sheet.dart';
@@ -59,6 +60,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  Future<void> _onNearMe() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final nearest = await ref
+          .read(locationProvider.notifier)
+          .locate(minEvents: 3);
+      ref.read(filtersProvider.notifier).setCity(nearest.city.id);
+      final km = nearest.distanceKm.round();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            km <= 30
+                ? 'Showing events in ${nearest.city.name}'
+                : 'Showing events in ${nearest.city.name} — '
+                      'the closest covered city, $km km away',
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e is LocationException ? e.message : 'Location lookup failed: $e',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(eventFeedProvider);
@@ -82,6 +112,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
         ),
         actions: [
+          Consumer(
+            builder: (context, ref, _) {
+              final locating = ref.watch(
+                locationProvider.select((s) => s.locating),
+              );
+              return IconButton(
+                tooltip: 'Events near me',
+                onPressed: locating ? null : _onNearMe,
+                icon: locating
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.my_location),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Filters',
             icon: Badge(

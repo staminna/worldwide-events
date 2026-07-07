@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/jorgenunes/eventscraper/internal/geo"
+	"github.com/jorgenunes/eventscraper/internal/geocode"
 	"github.com/jorgenunes/eventscraper/internal/model"
 	"github.com/jorgenunes/eventscraper/internal/scraper"
 	"github.com/jorgenunes/eventscraper/internal/store"
@@ -48,6 +50,146 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleCities(w http.ResponseWriter, _ *http.Request) {
 	cities := s.cities.All()
 	writeJSON(w, 200, envelope{Data: cities, Meta: meta{Total: len(cities)}})
+}
+
+// parseLatLon extracts and validates the lat/lon query params shared by the
+// /geo/* endpoints. It writes the 400 itself and reports ok=false.
+func parseLatLon(w http.ResponseWriter, r *http.Request) (lat, lon float64, ok bool) {
+	var errLat, errLon error
+	lat, errLat = strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
+	lon, errLon = strconv.ParseFloat(r.URL.Query().Get("lon"), 64)
+	if errLat != nil || errLon != nil {
+		writeErr(w, 400, "lat and lon query params are required numbers")
+		return 0, 0, false
+	}
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		writeErr(w, 400, "lat must be in [-90,90] and lon in [-180,180]")
+		return 0, 0, false
+	}
+	return lat, lon, true
+}
+
+// handleGeoReverse resolves a coordinate to the nearest catalog city —
+// reverse geocoding against our own city list, so clients can turn a device
+// location into a feed without any external geocoding service. With
+// min_events=N it walks cities outward and lands on the first whose feed
+// already has N events with coordinates, so an empty catalog city doesn't
+// win just by being closest.
+func (s *Server) handleGeoReverse(w http.ResponseWriter, r *http.Request) {
+	lat, lon, ok := parseLatLon(w, r)
+	if !ok {
+		return
+	}
+	minEvents := 0
+	if v := r.URL.Query().Get("min_events"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			writeErr(w, 400, "min_events must be an integer")
+			return
+		}
+		minEvents = n
+	}
+	if minEvents <= 0 {
+		city, km, ok := s.cities.Nearest(lat, lon)
+		if !ok {
+			writeErr(w, 404, "no cities in catalog")
+			return
+		}
+		writeJSON(w, 200, envelope{
+			Data: map[string]any{
+				"city":       city,
+				"distanceKm": math.Round(km*10) / 10,
+			},
+			Meta: meta{Total: 1},
+		})
+		return
+	}
+
+	// Expanding search, bounded so a user in the middle of nowhere doesn't
+	// get teleported to another continent.
+	const (
+		maxCandidates = 15
+		maxRadiusKm   = 500.0
+	)
+	ranked := s.cities.RankedByDistance(lat, lon)
+	if len(ranked) == 0 {
+		writeErr(w, 404, "no cities in catalog")
+		return
+	}
+	now := time.Now().UTC()
+	nearestCount, err := s.store.CountLocatedUpcoming(r.Context(), ranked[0].City.ID, now)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	chosen, chosenCount := ranked[0], nearestCount
+	if nearestCount < minEvents {
+		for i := 1; i < len(ranked) && i < maxCandidates && ranked[i].Km <= maxRadiusKm; i++ {
+			n, err := s.store.CountLocatedUpcoming(r.Context(), ranked[i].City.ID, now)
+			if err != nil {
+				writeErr(w, 500, err.Error())
+				return
+			}
+			if n >= minEvents {
+				chosen, chosenCount = ranked[i], n
+				break
+			}
+		}
+		// The true nearest city lost on content, not distance — get it
+		// scraping in the background so it can win next time.
+		nearest := ranked[0].City
+		s.kickRefresh(&nearest, "", "")
+	}
+	writeJSON(w, 200, envelope{
+		Data: map[string]any{
+			"city":          chosen.City,
+			"distanceKm":    math.Round(chosen.Km*10) / 10,
+			"locatedEvents": chosenCount,
+		},
+		Meta: meta{Total: 1},
+	})
+}
+
+// negativeAddressRetry is how long a cached "no address here" answer is
+// trusted before Nominatim gets asked again.
+const negativeAddressRetry = 7 * 24 * time.Hour
+
+// handleGeoAddress resolves a coordinate to a street address via Nominatim,
+// persistently cached so the 1 req/s upstream budget is spent once per
+// venue, ever. With event=<id>, a resolved address is also patched into the
+// stored event so feed responses pick it up.
+func (s *Server) handleGeoAddress(w http.ResponseWriter, r *http.Request) {
+	lat, lon, ok := parseLatLon(w, r)
+	if !ok {
+		return
+	}
+	key := geocode.Key(lat, lon)
+	addr, resolvedAt, found, err := s.store.GetGeoAddress(r.Context(), key)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	if !found || (addr == "" && time.Since(resolvedAt) > negativeAddressRetry) {
+		// SingleFlight collapses concurrent lookups of the same venue; the
+		// leader writes the cache before Do returns, so followers (and the
+		// leader) just re-read. Upstream errors are not cached — the re-read
+		// then misses and we soft-fail with an empty address.
+		_ = s.geoSF.Do(r.Context(), "addr|"+key, func(ctx context.Context) error {
+			a, err := s.geocoder.Reverse(ctx, lat, lon)
+			if err != nil {
+				return err
+			}
+			return s.store.PutGeoAddress(ctx, key, a)
+		})
+		addr, _, _, _ = s.store.GetGeoAddress(r.Context(), key)
+	}
+	if eventID := r.URL.Query().Get("event"); eventID != "" && addr != "" {
+		_, _ = s.store.SetVenueAddressIfEmpty(r.Context(), eventID, addr)
+	}
+	writeJSON(w, 200, envelope{
+		Data: map[string]any{"address": addr},
+		Meta: meta{Total: 1},
+	})
 }
 
 type sourceStatus struct {
@@ -219,6 +361,10 @@ func parseQuery(r *http.Request, cat *geo.Catalog) (store.Query, *geo.City, erro
 }
 
 func (s *Server) kickRefresh(city *geo.City, cat model.Category, src model.Source) {
+	// Tests build partial Servers; refresh is best-effort anyway.
+	if s.scheduler == nil || s.registry == nil {
+		return
+	}
 	cats := []model.Category{cat}
 	if cat == "" {
 		cats = model.AllCategories()

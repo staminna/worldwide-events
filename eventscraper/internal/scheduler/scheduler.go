@@ -10,6 +10,7 @@ import (
 	"github.com/jorgenunes/eventscraper/internal/cache"
 	"github.com/jorgenunes/eventscraper/internal/enrich"
 	"github.com/jorgenunes/eventscraper/internal/geo"
+	"github.com/jorgenunes/eventscraper/internal/geocode"
 	"github.com/jorgenunes/eventscraper/internal/model"
 	"github.com/jorgenunes/eventscraper/internal/scraper"
 	"github.com/jorgenunes/eventscraper/internal/store"
@@ -76,6 +77,11 @@ func (s *Scheduler) Run(ctx context.Context, src model.Source, city geo.City, ca
 			}
 			// Backfill missing images via og:image / twitter:image.
 			s.enricher.BackfillImages(ctx, events)
+			// Re-apply street addresses already resolved for these venues.
+			// Upserts replace the payload wholesale, so without this a
+			// /geo/address patch would be wiped on the next scrape. Cache
+			// lookups only — never the network.
+			s.backfillAddresses(ctx, events)
 			if upErr := s.store.UpsertEvents(ctx, events); upErr != nil {
 				slog.Error("upsert events", "src", src, "city", city.ID, "err", upErr)
 			}
@@ -93,6 +99,21 @@ func (s *Scheduler) Run(ctx context.Context, src model.Source, city geo.City, ca
 		)
 		return nil
 	})
+}
+
+// backfillAddresses fills empty venue addresses from the geo_addresses
+// cache for events that carry coordinates.
+func (s *Scheduler) backfillAddresses(ctx context.Context, events []model.Event) {
+	for i := range events {
+		v := &events[i].Venue
+		if v.Address != "" || (v.Lat == 0 && v.Lon == 0) {
+			continue
+		}
+		addr, _, found, err := s.store.GetGeoAddress(ctx, geocode.Key(v.Lat, v.Lon))
+		if err == nil && found && addr != "" {
+			v.Address = addr
+		}
+	}
 }
 
 // MaybeRefresh fires a background scrape for the (src, city) if the cached

@@ -22,6 +22,27 @@ class City {
   );
 }
 
+/// Result of reverse-geocoding a coordinate against the backend's city
+/// catalog: the closest supported city and how far away it is.
+/// [locatedEvents] is only present when the lookup used min_events.
+class NearestCity {
+  final City city;
+  final double distanceKm;
+  final int? locatedEvents;
+
+  const NearestCity({
+    required this.city,
+    required this.distanceKm,
+    this.locatedEvents,
+  });
+
+  factory NearestCity.fromJson(Map<String, dynamic> json) => NearestCity(
+    city: City.fromJson(json['city'] as Map<String, dynamic>),
+    distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 0,
+    locatedEvents: (json['locatedEvents'] as num?)?.toInt(),
+  );
+}
+
 class Venue {
   final String name;
   final String address;

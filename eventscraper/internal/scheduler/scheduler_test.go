@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jorgenunes/eventscraper/internal/geo"
+	"github.com/jorgenunes/eventscraper/internal/geocode"
 	"github.com/jorgenunes/eventscraper/internal/model"
 	"github.com/jorgenunes/eventscraper/internal/scraper"
 	"github.com/jorgenunes/eventscraper/internal/store"
@@ -92,6 +93,42 @@ func TestRunPersistsEventsAndMarksOK(t *testing.T) {
 	// Music category TTL is 12h.
 	if stt.ExpiresAt.Sub(stt.LastRunAt) != 12*time.Hour {
 		t.Errorf("expires-last = %v, want 12h", stt.ExpiresAt.Sub(stt.LastRunAt))
+	}
+}
+
+// A re-scrape replaces the stored payload, so previously geocoded street
+// addresses must be re-applied from the geo_addresses cache before upsert.
+func TestRunBackfillsAddressesFromCache(t *testing.T) {
+	sch, reg, st := newSchedulerWithStore(t)
+	ev := model.Event{
+		ID:        model.MakeID(model.SourceLuma, "x2"),
+		Source:    model.SourceLuma,
+		SourceID:  "x2",
+		Title:     "Addressless",
+		Category:  model.CategoryMusic,
+		StartsAt:  time.Date(2026, 8, 10, 18, 0, 0, 0, time.UTC),
+		Venue:     model.Venue{Name: "LAV", Lat: 38.7223, Lon: -9.1393},
+		City:      "Lisboa",
+		Country:   "PT",
+		URL:       "https://lu.ma/x2",
+		ImageURL:  "https://img/cover.jpg",
+		ScrapedAt: time.Now().UTC(),
+	}
+	// The venue's address was resolved earlier by /geo/address.
+	if err := st.PutGeoAddress(context.Background(), geocode.Key(ev.Venue.Lat, ev.Venue.Lon), "Av. Infante D. Henrique, Lisboa"); err != nil {
+		t.Fatalf("PutGeoAddress: %v", err)
+	}
+	reg.Register(&fakeScraper{src: model.SourceLuma, events: []model.Event{ev}})
+
+	sch.Run(context.Background(), model.SourceLuma,
+		geo.City{ID: "lisbon", Name: "Lisbon"}, []model.Category{model.CategoryMusic})
+
+	got, ok, err := st.GetEvent(context.Background(), ev.ID)
+	if err != nil || !ok {
+		t.Fatalf("event not persisted: ok=%v err=%v", ok, err)
+	}
+	if got.Venue.Address != "Av. Infante D. Henrique, Lisboa" {
+		t.Errorf("venue address = %q, want cached address re-applied", got.Venue.Address)
 	}
 }
 

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eventscraper — Map Viz</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #0e0e10; }
+  #app { position: absolute; inset: 0; }
+  #status {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    color: #e8e8ea; font: 15px/1.5 -apple-system, system-ui, sans-serif;
+    text-align: center; z-index: 10; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="status">Loading kepler.gl…</div>
+
+<!-- kepler.gl UMD peer-dependency stack (pinned). Globals in parentheses:
+     React, ReactDOM, Redux, ReactRedux, styled, KeplerGl. -->
+<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
+<script src="https://unpkg.com/react-redux@8.1.3/dist/react-redux.min.js"></script>
+<script src="https://unpkg.com/styled-components@6.1.8/dist/styled-components.min.js"></script>
+<script src="https://unpkg.com/kepler.gl@3.1.9/umd/keplergl.min.js"></script>
+
+<script>
+(function () {
+  'use strict';
+  var statusEl = document.getElementById('status');
+  function status(msg) { statusEl.textContent = msg; }
+  function fail(msg) { status(msg); console.error('[viz]', msg); }
+
+  if (!window.React || !window.ReactDOM || !window.Redux || !window.ReactRedux || !window.KeplerGl) {
+    fail('Failed to load kepler.gl scripts — check the network tab / CDN access.');
+    return;
+  }
+
+  // Redux store wired the way kepler.gl expects.
+  var reducers = Redux.combineReducers({ keplerGl: KeplerGl.keplerGlReducer });
+  var middlewares = KeplerGl.enhanceReduxMiddleware([]);
+  var store = Redux.createStore(reducers, {}, Redux.applyMiddleware.apply(null, middlewares));
+
+  // Full-viewport kepler component with a resize listener.
+  function App() {
+    var size = React.useState({ w: window.innerWidth, h: window.innerHeight });
+    var dims = size[0], setDims = size[1];
+    React.useEffect(function () {
+      function onResize() { setDims({ w: window.innerWidth, h: window.innerHeight }); }
+      window.addEventListener('resize', onResize);
+      return function () { window.removeEventListener('resize', onResize); };
+    }, []);
+    return React.createElement(KeplerGl.default, {
+      id: 'events',
+      width: dims.w,
+      height: dims.h,
+      mapboxApiAccessToken: '' // kepler.gl v3 ships MapLibre + CARTO basemaps, token-free
+    });
+  }
+
+  var root = ReactDOM.createRoot(document.getElementById('app'));
+  root.render(React.createElement(ReactRedux.Provider, { store: store }, React.createElement(App)));
+
+  // Preferred config: dark CARTO basemap, points colored by category, and a
+  // draggable time-range filter on startsAt (the kepler.gl party trick).
+  var fullConfig = {
+    version: 'v1',
+    config: {
+      mapStyle: { styleType: 'dark-matter' },
+      visState: {
+        filters: [{
+          dataId: ['events'],
+          id: 'time-window',
+          name: ['startsAt'],
+          type: 'timeRange',
+          enlarged: true
+        }],
+        layers: [{
+          id: 'events-points',
+          type: 'geojson',
+          config: {
+            dataId: 'events',
+            label: 'Events',
+            columns: { geojson: '_geojson' },
+            isVisible: true,
+            visConfig: { radius: 14, opacity: 0.85, stroked: false, filled: true }
+          },
+          visualChannels: {
+            colorField: { name: 'category', type: 'string' },
+            colorScale: 'ordinal'
+          }
+        }]
+      }
+    }
+  };
+
+  status('Loading events…');
+  // Relative fetch: /viz → <prefix>/events.geojson, so the page works both
+  // locally and behind the production /eventscraper/ path prefix.
+  fetch('events.geojson')
+    .then(function (r) {
+      if (!r.ok) throw new Error('events.geojson HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (geojson) {
+      var n = (geojson.features || []).length;
+      if (!n) {
+        fail('No located events yet — the scrapers may still be warming up. Refresh in a minute.');
+        return;
+      }
+      var processed = KeplerGl.processGeojson(geojson);
+      var dataset = { info: { id: 'events', label: 'Events' }, data: processed };
+      // The hand-written layer/filter config is the brittle part; fall back
+      // to kepler's automatic config rather than showing a blank page.
+      try {
+        store.dispatch(KeplerGl.addDataToMap({
+          datasets: [dataset],
+          options: { centerMap: true, readOnly: false },
+          config: fullConfig
+        }));
+      } catch (e) {
+        console.warn('[viz] full config rejected, retrying with defaults', e);
+        store.dispatch(KeplerGl.addDataToMap({
+          datasets: [dataset],
+          options: { centerMap: true, readOnly: false },
+          config: { version: 'v1', config: { mapStyle: { styleType: 'dark-matter' } } }
+        }));
+      }
+      statusEl.remove();
+    })
+    .catch(function (e) { fail('Could not load events: ' + e.message); });
+})();
+</script>
+</body>
+</html>

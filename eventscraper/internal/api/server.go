@@ -8,8 +8,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/jorgenunes/eventscraper/internal/cache"
 	"github.com/jorgenunes/eventscraper/internal/config"
 	"github.com/jorgenunes/eventscraper/internal/geo"
+	"github.com/jorgenunes/eventscraper/internal/geocode"
 	"github.com/jorgenunes/eventscraper/internal/scheduler"
 	"github.com/jorgenunes/eventscraper/internal/scraper"
 	"github.com/jorgenunes/eventscraper/internal/store"
@@ -21,6 +23,8 @@ type Server struct {
 	cities    *geo.Catalog
 	registry  *scraper.Registry
 	scheduler *scheduler.Scheduler
+	geocoder  *geocode.Client
+	geoSF     *cache.SingleFlight
 }
 
 func NewServer(cfg config.Config, st store.Store, cities *geo.Catalog, reg *scraper.Registry, sch *scheduler.Scheduler) *Server {
@@ -30,6 +34,8 @@ func NewServer(cfg config.Config, st store.Store, cities *geo.Catalog, reg *scra
 		cities:    cities,
 		registry:  reg,
 		scheduler: sch,
+		geocoder:  geocode.New(),
+		geoSF:     cache.NewSingleFlight(),
 	}
 }
 
@@ -44,6 +50,10 @@ func (s *Server) Router() http.Handler {
 
 	r.Get("/healthz", s.handleHealthz)
 	r.Get("/cities", s.handleCities)
+	r.Get("/geo/reverse", s.handleGeoReverse)
+	r.Get("/geo/address", s.handleGeoAddress)
+	r.Get("/events.geojson", s.handleEventsGeoJSON)
+	r.Get("/viz", s.handleViz)
 	r.Get("/sources", s.handleSources)
 	r.Get("/events", s.handleEvents)
 	r.Get("/events/{id}", s.handleEvent)

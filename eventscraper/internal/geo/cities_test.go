@@ -118,6 +118,55 @@ func TestLoadFileErrors(t *testing.T) {
 	}
 }
 
+func TestNearest(t *testing.T) {
+	cat, err := Load(writeTempYAML(t, sampleYAML))
+	if err != nil {
+		t.Fatalf("Load err: %v", err)
+	}
+
+	// A point in Sintra (~25km west of Lisbon) must resolve to Lisbon.
+	city, km, ok := cat.Nearest(38.8029, -9.3817)
+	if !ok || city.ID != "lisbon" {
+		t.Fatalf("Nearest(Sintra) = %q ok=%v, want lisbon", city.ID, ok)
+	}
+	if km < 5 || km > 50 {
+		t.Errorf("Nearest(Sintra) distance = %.1fkm, want ~25", km)
+	}
+
+	// Potsdam is right next to Berlin.
+	if city, _, _ := cat.Nearest(52.3906, 13.0645); city.ID != "berlin" {
+		t.Errorf("Nearest(Potsdam) = %q, want berlin", city.ID)
+	}
+
+	// Empty catalog reports no match.
+	empty := &Catalog{}
+	if _, _, ok := empty.Nearest(0, 0); ok {
+		t.Error("Nearest on empty catalog should report ok=false")
+	}
+}
+
+func TestRankedByDistance(t *testing.T) {
+	cat, err := Load(writeTempYAML(t, sampleYAML))
+	if err != nil {
+		t.Fatalf("Load err: %v", err)
+	}
+	ranked := cat.RankedByDistance(38.8029, -9.3817) // Sintra
+	if len(ranked) != 2 {
+		t.Fatalf("ranked len = %d, want 2", len(ranked))
+	}
+	if ranked[0].City.ID != "lisbon" || ranked[1].City.ID != "berlin" {
+		t.Errorf("order = %s, %s; want lisbon, berlin", ranked[0].City.ID, ranked[1].City.ID)
+	}
+	if ranked[0].Km >= ranked[1].Km {
+		t.Errorf("distances not ascending: %v", ranked)
+	}
+	// First entry must agree with Nearest.
+	near, km, _ := cat.Nearest(38.8029, -9.3817)
+	if near.ID != ranked[0].City.ID || km != ranked[0].Km {
+		t.Errorf("Nearest disagrees with RankedByDistance[0]")
+	}
+}
+
 func TestKmBetween(t *testing.T) {
 	// Lisbon → Porto is ~274km as the crow flies.
 	d := KmBetween(38.7223, -9.1393, 41.1579, -8.6291)

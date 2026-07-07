@@ -27,6 +27,9 @@ type Query struct {
 	Limit          int
 	Offset         int
 	RequireImage   bool
+	// RequireCoords keeps only events whose venue has coordinates (used by
+	// the GeoJSON export, where unlocated events are useless).
+	RequireCoords bool
 }
 
 type ScrapeStatus struct {
@@ -50,5 +53,17 @@ type Store interface {
 	// JSON imageUrl field matches the given LIKE-style patterns. Returns the
 	// number of rows updated.
 	ClearImageURLsMatching(ctx context.Context, patterns []string) (int, error)
+	// CountLocatedUpcoming counts a city's events that have venue
+	// coordinates and haven't ended by the given instant.
+	CountLocatedUpcoming(ctx context.Context, cityID string, notEndedBefore time.Time) (int, error)
+	// GetGeoAddress / PutGeoAddress cache reverse-geocoded street addresses
+	// by rounded-coordinate key. An empty stored address is a negative-cache
+	// entry ("looked up, nothing there"); resolvedAt lets callers decide
+	// when a negative is stale enough to retry.
+	GetGeoAddress(ctx context.Context, key string) (addr string, resolvedAt time.Time, found bool, err error)
+	PutGeoAddress(ctx context.Context, key, addr string) error
+	// SetVenueAddressIfEmpty patches the stored event's venue.address only
+	// when it is currently empty. Returns whether a row was changed.
+	SetVenueAddressIfEmpty(ctx context.Context, eventID, addr string) (bool, error)
 	Close() error
 }

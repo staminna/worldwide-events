@@ -227,14 +227,30 @@ class _HeroHeader extends StatelessWidget {
   }
 }
 
-class _DetailsPane extends StatelessWidget {
+class _DetailsPane extends ConsumerWidget {
   const _DetailsPane({required this.event});
 
   final Event event;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    // Venues scraped without an address get one lazily: the backend
+    // reverse-geocodes the coordinates (cached, and persisted back into the
+    // event). Silent while loading or on failure.
+    var address = event.venue.address;
+    if (address.isEmpty && event.venue.lat != 0 && event.venue.lon != 0) {
+      address = ref
+              .watch(
+                venueAddressProvider((
+                  lat: event.venue.lat,
+                  lon: event.venue.lon,
+                  id: event.id,
+                )),
+              )
+              .valueOrNull ??
+          '';
+    }
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
       child: Column(
@@ -275,7 +291,7 @@ class _DetailsPane extends StatelessWidget {
             icon: Icons.place_outlined,
             text: [
               event.venue.name,
-              event.venue.address,
+              address,
               '${event.city}, ${event.country}',
             ].where((s) => s.isNotEmpty).join(' • '),
           ),

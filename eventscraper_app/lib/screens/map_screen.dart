@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/event.dart';
+import '../state/location.dart';
 import '../state/providers.dart';
 import '../widgets/category_style.dart';
 
@@ -21,9 +22,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final MapController _controller = MapController();
   Event? _selected;
 
+  Future<void> _goToMyLocation() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(locationProvider.notifier).refreshFix();
+      final loc = ref.read(locationProvider);
+      if (loc.hasFix) {
+        _controller.move(LatLng(loc.lat!, loc.lon!), 12);
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e is LocationException ? e.message : 'Location lookup failed: $e',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(eventFeedProvider);
+    final loc = ref.watch(locationProvider);
 
     if (feed.loading && feed.events.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -78,12 +99,40 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     _ClusterBubble(count: markers.length),
               ),
             ),
+            if (loc.hasFix)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: LatLng(loc.lat!, loc.lon!),
+                    width: 22,
+                    height: 22,
+                    child: const _UserDot(),
+                  ),
+                ],
+              ),
             const RichAttributionWidget(
               attributions: [
                 TextSourceAttribution('© OpenStreetMap contributors'),
               ],
             ),
           ],
+        ),
+        Positioned(
+          right: 12,
+          // Lift the button clear of the selected-event card when one shows.
+          bottom: _selected == null ? 16 : 108,
+          child: FloatingActionButton.small(
+            heroTag: 'map-locate',
+            tooltip: 'My location',
+            onPressed: loc.locating ? null : _goToMyLocation,
+            child: loc.locating
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location),
+          ),
         ),
         Positioned(
           top: 12,
@@ -189,6 +238,29 @@ class _MapMarker extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The classic blue "you are here" dot with a white ring.
+class _UserDot extends StatelessWidget {
+  const _UserDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF1A73E8),
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
     );
   }

@@ -389,6 +389,144 @@ func TestQueryByCityID(t *testing.T) {
 	}
 }
 
+func TestGeoAddressCache(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	// Miss on unknown key.
+	_, _, found, err := st.GetGeoAddress(ctx, "38.72230,-9.13930")
+	if err != nil || found {
+		t.Fatalf("miss: found=%v err=%v", found, err)
+	}
+
+	// Roundtrip.
+	if err := st.PutGeoAddress(ctx, "38.72230,-9.13930", "Rua Augusta 1, 1100-048 Lisboa"); err != nil {
+		t.Fatalf("PutGeoAddress: %v", err)
+	}
+	addr, resolvedAt, found, err := st.GetGeoAddress(ctx, "38.72230,-9.13930")
+	if err != nil || !found {
+		t.Fatalf("hit: found=%v err=%v", found, err)
+	}
+	if addr != "Rua Augusta 1, 1100-048 Lisboa" {
+		t.Errorf("addr = %q", addr)
+	}
+	if time.Since(resolvedAt) > time.Minute || time.Since(resolvedAt) < 0 {
+		t.Errorf("resolvedAt not ~now: %v", resolvedAt)
+	}
+
+	// Negative cache: empty address is stored and found.
+	if err := st.PutGeoAddress(ctx, "0.00000,0.00000", ""); err != nil {
+		t.Fatalf("negative put: %v", err)
+	}
+	addr, _, found, _ = st.GetGeoAddress(ctx, "0.00000,0.00000")
+	if !found || addr != "" {
+		t.Errorf("negative: found=%v addr=%q, want found with empty addr", found, addr)
+	}
+
+	// Overwrite via upsert.
+	if err := st.PutGeoAddress(ctx, "0.00000,0.00000", "Somewhere 1"); err != nil {
+		t.Fatalf("overwrite: %v", err)
+	}
+	addr, _, _, _ = st.GetGeoAddress(ctx, "0.00000,0.00000")
+	if addr != "Somewhere 1" {
+		t.Errorf("after overwrite addr = %q", addr)
+	}
+}
+
+func TestSetVenueAddressIfEmpty(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 6, 10, 18, 0, 0, 0, time.UTC)
+
+	blank := sampleEvent("noaddr", "No Address", "Lisboa", model.CategoryMusic, model.SourceLuma, base, "https://img/1.jpg")
+	blank.Venue = model.Venue{Name: "LAV", Lat: 38.72, Lon: -9.1}
+	kept := sampleEvent("hasaddr", "Has Address", "Lisboa", model.CategoryMusic, model.SourceLuma, base, "https://img/2.jpg")
+	kept.Venue = model.Venue{Name: "Coliseu", Address: "Rua das Portas 96", Lat: 38.71, Lon: -9.14}
+	if err := st.UpsertEvents(ctx, []model.Event{blank, kept}); err != nil {
+		t.Fatalf("UpsertEvents: %v", err)
+	}
+
+	// Fills an empty address.
+	changed, err := st.SetVenueAddressIfEmpty(ctx, blank.ID, "Av. Infante D. Henrique, Lisboa")
+	if err != nil || !changed {
+		t.Fatalf("fill: changed=%v err=%v", changed, err)
+	}
+	got, _, _ := st.GetEvent(ctx, blank.ID)
+	if got.Venue.Address != "Av. Infante D. Henrique, Lisboa" {
+		t.Errorf("address = %q", got.Venue.Address)
+	}
+	if got.Venue.Name != "LAV" || got.Venue.Lat != 38.72 {
+		t.Errorf("patch must not disturb the rest of the venue: %+v", got.Venue)
+	}
+
+	// Never overwrites an existing address.
+	changed, err = st.SetVenueAddressIfEmpty(ctx, kept.ID, "WRONG")
+	if err != nil || changed {
+		t.Fatalf("overwrite guard: changed=%v err=%v", changed, err)
+	}
+	got, _, _ = st.GetEvent(ctx, kept.ID)
+	if got.Venue.Address != "Rua das Portas 96" {
+		t.Errorf("existing address clobbered: %q", got.Venue.Address)
+	}
+
+	// Unknown event id: no change, no error.
+	changed, err = st.SetVenueAddressIfEmpty(ctx, "deadbeef", "X")
+	if err != nil || changed {
+		t.Errorf("unknown id: changed=%v err=%v", changed, err)
+	}
+}
+
+func TestCountLocatedUpcomingAndRequireCoords(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+
+	located := func(id string, starts time.Time) model.Event {
+		e := sampleEvent(id, "E-"+id, "Lisboa", model.CategoryMusic, model.SourceLuma, starts, "https://img/x.jpg")
+		e.CityID = "lisbon"
+		e.Venue = model.Venue{Name: "V", Lat: 38.72, Lon: -9.13}
+		return e
+	}
+	// Two upcoming located events, one located but long over, one upcoming
+	// without coordinates, and one located upcoming event in another city.
+	ended := located("ended", now.Add(-30*time.Hour))
+	noCoords := sampleEvent("nocoords", "Unlocated", "Lisboa", model.CategoryMusic, model.SourceLuma, now.Add(2*time.Hour), "https://img/y.jpg")
+	noCoords.CityID = "lisbon"
+	elsewhere := located("porto1", now.Add(2*time.Hour))
+	elsewhere.CityID = "porto"
+	events := []model.Event{
+		located("up1", now.Add(1*time.Hour)),
+		located("up2", now.Add(4*time.Hour)),
+		ended, noCoords, elsewhere,
+	}
+	if err := st.UpsertEvents(ctx, events); err != nil {
+		t.Fatalf("UpsertEvents: %v", err)
+	}
+
+	n, err := st.CountLocatedUpcoming(ctx, "lisbon", now)
+	if err != nil {
+		t.Fatalf("CountLocatedUpcoming: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("lisbon located upcoming = %d, want 2", n)
+	}
+	if n, _ := st.CountLocatedUpcoming(ctx, "porto", now); n != 1 {
+		t.Errorf("porto = %d, want 1", n)
+	}
+	if n, _ := st.CountLocatedUpcoming(ctx, "berlin", now); n != 0 {
+		t.Errorf("berlin = %d, want 0", n)
+	}
+
+	// RequireCoords hides the unlocated event.
+	_, total, _, err := st.Query(ctx, Query{CityID: "lisbon", RequireCoords: true})
+	if err != nil {
+		t.Fatalf("Query RequireCoords: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("RequireCoords total = %d, want 3 (nocoords hidden)", total)
+	}
+}
+
 // A database created before the city_id column existed must be migrated in
 // place by Init.
 func TestInitMigratesCityID(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 
@@ -85,4 +86,39 @@ func (c *Catalog) Get(id string) (City, bool) {
 	defer c.mu.RUnlock()
 	v, ok := c.byID[strings.ToLower(id)]
 	return v, ok
+}
+
+// CityDistance pairs a catalog city with its distance from a reference
+// coordinate.
+type CityDistance struct {
+	City City    `json:"city"`
+	Km   float64 `json:"km"`
+}
+
+// RankedByDistance returns every catalog city sorted by ascending distance
+// from the given coordinate.
+func (c *Catalog) RankedByDistance(lat, lon float64) []CityDistance {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := make([]CityDistance, 0, len(c.cities))
+	for _, city := range c.cities {
+		out = append(out, CityDistance{City: city, Km: KmBetween(lat, lon, city.Lat, city.Lon)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Km < out[j].Km })
+	return out
+}
+
+// Nearest returns the catalog city closest to the given coordinate and its
+// distance in kilometres. ok is false only when the catalog is empty.
+func (c *Catalog) Nearest(lat, lon float64) (City, float64, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	best := City{}
+	bestKm := math.MaxFloat64
+	for _, city := range c.cities {
+		if d := KmBetween(lat, lon, city.Lat, city.Lon); d < bestKm {
+			best, bestKm = city, d
+		}
+	}
+	return best, bestKm, bestKm != math.MaxFloat64
 }

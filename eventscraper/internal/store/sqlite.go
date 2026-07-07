@@ -58,6 +58,12 @@ CREATE TABLE IF NOT EXISTS scrapes (
     err_message   TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (source, city_id)
 );
+
+CREATE TABLE IF NOT EXISTS geo_addresses (
+    key          TEXT PRIMARY KEY,
+    address      TEXT NOT NULL,
+    resolved_at  INTEGER NOT NULL
+);
 `
 
 func (s *SQLite) Init(ctx context.Context) error {
@@ -194,6 +200,12 @@ func (s *SQLite) Query(ctx context.Context, q Query) ([]model.Event, int, time.T
 	if q.RequireImage {
 		conds = append(conds, "json_extract(payload, '$.imageUrl') != ''")
 	}
+	if q.RequireCoords {
+		// Venue lat/lon carry omitempty, so zero coords are absent from the
+		// payload JSON and json_extract yields NULL.
+		conds = append(conds, "json_extract(payload, '$.venue.lat') IS NOT NULL",
+			"json_extract(payload, '$.venue.lon') IS NOT NULL")
+	}
 	where := ""
 	if len(conds) > 0 {
 		where = "WHERE " + strings.Join(conds, " AND ")
@@ -239,6 +251,58 @@ func (s *SQLite) Query(ctx context.Context, q Query) ([]model.Event, int, time.T
 		maxT = time.Unix(maxScraped.Int64, 0).UTC()
 	}
 	return out, total, maxT, rows.Err()
+}
+
+func (s *SQLite) CountLocatedUpcoming(ctx context.Context, cityID string, notEndedBefore time.Time) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `
+        SELECT COUNT(*) FROM events
+         WHERE city_id = ?
+           AND COALESCE(ends_at, starts_at + ?) >= ?
+           AND json_extract(payload, '$.venue.lat') IS NOT NULL
+           AND json_extract(payload, '$.venue.lon') IS NOT NULL
+    `, cityID, int64(noEndGrace.Seconds()), notEndedBefore.Unix()).Scan(&n)
+	return n, err
+}
+
+func (s *SQLite) GetGeoAddress(ctx context.Context, key string) (string, time.Time, bool, error) {
+	var addr string
+	var resolved int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT address, resolved_at FROM geo_addresses WHERE key = ?`, key,
+	).Scan(&addr, &resolved)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", time.Time{}, false, nil
+	}
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	return addr, time.Unix(resolved, 0).UTC(), true, nil
+}
+
+func (s *SQLite) PutGeoAddress(ctx context.Context, key, addr string) error {
+	_, err := s.db.ExecContext(ctx, `
+        INSERT INTO geo_addresses (key, address, resolved_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            address     = excluded.address,
+            resolved_at = excluded.resolved_at
+    `, key, addr, time.Now().Unix())
+	return err
+}
+
+func (s *SQLite) SetVenueAddressIfEmpty(ctx context.Context, eventID, addr string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `
+        UPDATE events
+           SET payload = json_set(payload, '$.venue.address', ?)
+         WHERE id = ?
+           AND COALESCE(json_extract(payload, '$.venue.address'), '') = ''
+    `, addr, eventID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 func (s *SQLite) MarkScrape(ctx context.Context, st ScrapeStatus) error {
