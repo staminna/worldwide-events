@@ -9,6 +9,7 @@ type Config struct {
 	Port             string
 	DBPath           string
 	CitiesPath       string
+	UploadDir        string
 	AdminToken       string
 	TicketmasterKey  string
 	MeetupOAuthToken string
@@ -23,6 +24,7 @@ func FromEnv() Config {
 		Port:             getenv("PORT", "8080"),
 		DBPath:           getenv("DB_PATH", filepath.Join(wd, "eventscraper.db")),
 		CitiesPath:       getenv("CITIES_PATH", filepath.Join(wd, "configs", "cities.yaml")),
+		UploadDir:        getenv("UPLOAD_DIR", filepath.Join(wd, "uploads")),
 		AdminToken:       os.Getenv("ADMIN_TOKEN"),
 		TicketmasterKey:  os.Getenv("TICKETMASTER_API_KEY"),
 		MeetupOAuthToken: os.Getenv("MEETUP_OAUTH_TOKEN"),

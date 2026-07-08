@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -272,6 +274,116 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, envelope{Data: ev, Meta: meta{Total: 1}})
+}
+
+// createEventInput is the JSON body accepted by POST /events. Coordinates and
+// venue fields are optional; without them the event still shows in the feed
+// (just not on the map).
+type createEventInput struct {
+	Title       string       `json:"title"`
+	Description string       `json:"description"`
+	Category    string       `json:"category"`
+	StartsAt    time.Time    `json:"startsAt"`
+	EndsAt      *time.Time   `json:"endsAt"`
+	CityID      string       `json:"cityId"`
+	VenueName   string       `json:"venueName"`
+	Address     string       `json:"address"`
+	Lat         float64      `json:"lat"`
+	Lon         float64      `json:"lon"`
+	ImageURL    string       `json:"imageUrl"`
+	Price       *model.Price `json:"price"`
+}
+
+// handleCreateEvent accepts a user-authored event and stores it under the
+// "manual" source. The read API is public, so this write is too — gate it
+// behind AdminToken here if abuse becomes a concern (see handleRefresh).
+func (s *Server) handleCreateEvent(w http.ResponseWriter, r *http.Request) {
+	var in createEventInput
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, 400, "invalid JSON body")
+		return
+	}
+	in.Title = strings.TrimSpace(in.Title)
+	if in.Title == "" {
+		writeErr(w, 400, "title is required")
+		return
+	}
+	cat := model.Category(in.Category)
+	if !cat.Valid() {
+		writeErr(w, 400, "invalid category")
+		return
+	}
+	if in.StartsAt.IsZero() {
+		writeErr(w, 400, "startsAt is required (RFC3339)")
+		return
+	}
+	// A valid catalog city is required so the event is reachable by the feed's
+	// ?city= filter (matching is by cityId, never by name).
+	city, ok := s.cities.Get(in.CityID)
+	if !ok {
+		writeErr(w, 400, "unknown city")
+		return
+	}
+
+	sourceID, err := randomID()
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	ev := model.Event{
+		ID:          model.MakeID(model.SourceManual, sourceID),
+		Source:      model.SourceManual,
+		SourceID:    sourceID,
+		Title:       in.Title,
+		Description: strings.TrimSpace(in.Description),
+		Category:    cat,
+		StartsAt:    in.StartsAt.UTC(),
+		EndsAt:      in.EndsAt,
+		Venue: model.Venue{
+			Name:    strings.TrimSpace(in.VenueName),
+			Address: strings.TrimSpace(in.Address),
+			Lat:     in.Lat,
+			Lon:     in.Lon,
+		},
+		City:      city.Name,
+		CityID:    city.ID,
+		Country:   city.Country,
+		URL:       "",
+		ImageURL:  strings.TrimSpace(in.ImageURL),
+		Price:     in.Price,
+		ScrapedAt: time.Now().UTC(),
+	}
+	if err := s.store.UpsertEvents(r.Context(), []model.Event{ev}); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 201, envelope{Data: ev, Meta: meta{Total: 1}})
+}
+
+// handleGeoSearch forward-geocodes a free-text query to candidate places, for
+// the app's map search bar and the add-event venue picker.
+func (s *Server) handleGeoSearch(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		writeErr(w, 400, "q query param is required")
+		return
+	}
+	results, err := s.geocoder.Search(r.Context(), q)
+	if err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	writeJSON(w, 200, envelope{Data: results, Meta: meta{Total: len(results)}})
+}
+
+// randomID returns a short random hex string used as the SourceID for manual
+// events, so each one's MakeID primary key is unique.
+func randomID() (string, error) {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {

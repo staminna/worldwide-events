@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -101,6 +102,69 @@ func (c *Client) Reverse(ctx context.Context, lat, lon float64) (string, error) 
 		return "", nil
 	}
 	return composeAddress(body), nil
+}
+
+// SearchResult is one candidate place from a forward-geocoding query.
+type SearchResult struct {
+	DisplayName string  `json:"displayName"`
+	Lat         float64 `json:"lat"`
+	Lon         float64 `json:"lon"`
+}
+
+// searchItem mirrors one entry of Nominatim's /search array (lat/lon come
+// back as strings).
+type searchItem struct {
+	DisplayName string `json:"display_name"`
+	Lat         string `json:"lat"`
+	Lon         string `json:"lon"`
+}
+
+// Search forward-geocodes a free-text query ("Coliseu dos Recreios, Lisbon")
+// to a ranked list of candidate places. Shares the same 1 req/s upstream
+// budget as Reverse via waitSlot. Returns an empty slice (not an error) when
+// Nominatim finds nothing.
+func (c *Client) Search(ctx context.Context, query string) ([]SearchResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, nil
+	}
+	if err := c.waitSlot(ctx); err != nil {
+		return nil, err
+	}
+	q := url.Values{}
+	q.Set("format", "jsonv2")
+	q.Set("addressdetails", "0")
+	q.Set("limit", "6")
+	q.Set("q", query)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/search?"+q.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/json")
+
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("nominatim status %d", res.StatusCode)
+	}
+	var items []searchItem
+	if err := json.NewDecoder(res.Body).Decode(&items); err != nil {
+		return nil, err
+	}
+	out := make([]SearchResult, 0, len(items))
+	for _, it := range items {
+		lat, errLat := strconv.ParseFloat(it.Lat, 64)
+		lon, errLon := strconv.ParseFloat(it.Lon, 64)
+		if errLat != nil || errLon != nil {
+			continue
+		}
+		out = append(out, SearchResult{DisplayName: it.DisplayName, Lat: lat, Lon: lon})
+	}
+	return out, nil
 }
 
 // composeAddress builds a compact European-style line: "Road 12, 1100-048

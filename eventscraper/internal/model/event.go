@@ -15,18 +15,22 @@ const (
 	SourceTicketmaster Source = "ticketmaster"
 	SourceMeetup       Source = "meetup"
 	SourceViralagenda  Source = "viralagenda"
+	// SourceManual is for events added by users through the app rather than
+	// scraped. It has no scraper, so it never appears "configured" in
+	// /sources, but is otherwise a first-class filterable source.
+	SourceManual Source = "manual"
 )
 
 func (s Source) Valid() bool {
 	switch s {
-	case SourceEventbrite, SourceSongkick, SourceLuma, SourceTicketmaster, SourceMeetup, SourceViralagenda:
+	case SourceEventbrite, SourceSongkick, SourceLuma, SourceTicketmaster, SourceMeetup, SourceViralagenda, SourceManual:
 		return true
 	}
 	return false
 }
 
 func AllSources() []Source {
-	return []Source{SourceEventbrite, SourceSongkick, SourceLuma, SourceTicketmaster, SourceMeetup, SourceViralagenda}
+	return []Source{SourceEventbrite, SourceSongkick, SourceLuma, SourceTicketmaster, SourceMeetup, SourceViralagenda, SourceManual}
 }
 
 type Category string

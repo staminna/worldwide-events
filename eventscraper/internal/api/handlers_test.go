@@ -310,6 +310,83 @@ func TestHandleEventsGeoJSON(t *testing.T) {
 	}
 }
 
+func TestHandleCreateEvent(t *testing.T) {
+	st := newTestStore(t)
+	s := &Server{cities: newCatalog(t), store: st}
+
+	post := func(body string) (int, model.Event) {
+		rec := httptest.NewRecorder()
+		s.handleCreateEvent(rec, httptest.NewRequest("POST", "/events", strings.NewReader(body)))
+		var resp struct {
+			Data model.Event `json:"data"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		return rec.Code, resp.Data
+	}
+
+	// A valid event is stored under the manual source and echoed back.
+	code, ev := post(`{"title":"My Gig","category":"music","startsAt":"2099-08-01T20:00:00Z","cityId":"lisbon","venueName":"Coliseu","lat":38.72,"lon":-9.14}`)
+	if code != 201 {
+		t.Fatalf("status = %d, want 201", code)
+	}
+	if ev.Source != model.SourceManual || ev.ID == "" || ev.CityID != "lisbon" || ev.Country != "PT" {
+		t.Fatalf("stored event = %+v", ev)
+	}
+
+	// It appears in a subsequent source-filtered query, image-less notwithstanding.
+	got, _, _, _ := s.store.Query(context.Background(), store.Query{Source: model.SourceManual, RequireImage: true})
+	if len(got) != 1 || got[0].ID != ev.ID {
+		t.Errorf("manual query returned %d events, want the created one", len(got))
+	}
+
+	// Validation failures are 400s.
+	for _, body := range []string{
+		`{"category":"music","startsAt":"2099-08-01T20:00:00Z","cityId":"lisbon"}`,        // no title
+		`{"title":"x","category":"food","startsAt":"2099-08-01T20:00:00Z","cityId":"lisbon"}`, // bad category
+		`{"title":"x","category":"music","cityId":"lisbon"}`,                              // no startsAt
+		`{"title":"x","category":"music","startsAt":"2099-08-01T20:00:00Z","cityId":"nowhere"}`, // unknown city
+		`not json`,
+	} {
+		if code, _ := post(body); code != 400 {
+			t.Errorf("body %q: status = %d, want 400", body, code)
+		}
+	}
+}
+
+func TestHandleGeoSearch(t *testing.T) {
+	nominatim := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"display_name":"Coliseu dos Recreios, Lisboa","lat":"38.7166","lon":"-9.1399"}]`))
+	}))
+	defer nominatim.Close()
+
+	s := &Server{geocoder: &geocode.Client{
+		HTTP: nominatim.Client(), BaseURL: nominatim.URL,
+		MinInterval: time.Millisecond, MaxWait: time.Second,
+	}}
+
+	rec := httptest.NewRecorder()
+	s.handleGeoSearch(rec, httptest.NewRequest("GET", "/geo/search?q=coliseu", nil))
+	if rec.Code != 200 {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Data []geocode.SearchResult `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Data) != 1 || resp.Data[0].Lat != 38.7166 || resp.Data[0].Lon != -9.1399 {
+		t.Errorf("results = %+v", resp.Data)
+	}
+
+	// Empty query is a 400.
+	rec = httptest.NewRecorder()
+	s.handleGeoSearch(rec, httptest.NewRequest("GET", "/geo/search?q=", nil))
+	if rec.Code != 400 {
+		t.Errorf("empty q status = %d, want 400", rec.Code)
+	}
+}
+
 func TestParseQueryDefaults(t *testing.T) {
 	cat := newCatalog(t)
 	r := httptest.NewRequest("GET", "/events", nil)

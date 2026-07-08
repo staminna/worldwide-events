@@ -198,7 +198,9 @@ func (s *SQLite) Query(ctx context.Context, q Query) ([]model.Event, int, time.T
 		args = append(args, "%"+strings.ToLower(q.Search)+"%")
 	}
 	if q.RequireImage {
-		conds = append(conds, "json_extract(payload, '$.imageUrl') != ''")
+		// Manually added events are exempt — they carry coordinates and are
+		// worth showing (in the feed and on the map) even without an image.
+		conds = append(conds, "(json_extract(payload, '$.imageUrl') != '' OR source = 'manual')")
 	}
 	if q.RequireCoords {
 		// Venue lat/lon carry omitempty, so zero coords are absent from the
