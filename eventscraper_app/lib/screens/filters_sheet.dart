@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/event.dart';
+import '../state/follows.dart';
 import '../state/providers.dart';
 
 class FiltersSheet extends ConsumerWidget {
@@ -21,7 +22,17 @@ class FiltersSheet extends ConsumerWidget {
       maxChildSize: 0.95,
       builder: (_, controller) => ListView(
         controller: controller,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        // The sheet draws edge-to-edge behind the system nav bar (and the
+        // keyboard, for the city field), so the bottom padding must include
+        // both insets or the Clear/Apply row gets cropped.
+        padding: EdgeInsets.fromLTRB(
+          16,
+          12,
+          16,
+          16 +
+              MediaQuery.viewPaddingOf(context).bottom +
+              MediaQuery.viewInsetsOf(context).bottom,
+        ),
         children: [
           Center(
             child: Container(
@@ -148,6 +159,30 @@ class FiltersSheet extends ConsumerWidget {
           const SizedBox(height: 24),
           Row(
             children: [
+              Icon(
+                Icons.notifications_active_outlined,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Notify me about new…',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _FollowSection(
+            selectedCityId: filters.cityId,
+            cities: citiesAsync.valueOrNull ?? const [],
+            sources: (sourcesAsync.valueOrNull ?? const [])
+                .where((s) => s.configured && s.id != EventSource.unknown)
+                .map((s) => s.id)
+                .toList(),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
               Expanded(
                 child: OutlinedButton(
                   onPressed: notifier.clear,
@@ -171,4 +206,63 @@ class FiltersSheet extends ConsumerWidget {
   String _fmt(DateTime? d) => d == null
       ? '—'
       : '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
+/// Bell chips that toggle a [Follow] for each category, configured source, and
+/// the currently-selected city. Following surfaces a local notification when
+/// new matching events are scraped (checked on app open/resume).
+class _FollowSection extends ConsumerWidget {
+  const _FollowSection({
+    required this.selectedCityId,
+    required this.cities,
+    required this.sources,
+  });
+
+  final String? selectedCityId;
+  final List<City> cities;
+  final List<EventSource> sources;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final follows = ref.watch(followsProvider);
+    final fn = ref.read(followsProvider.notifier);
+
+    bool following(FollowType t, String v) =>
+        follows.any((f) => f.type == t && f.value == v);
+
+    Widget bell(FollowType type, String value, String label) {
+      final on = following(type, value);
+      return FilterChip(
+        avatar: Icon(
+          on ? Icons.notifications_active : Icons.notifications_none,
+          size: 16,
+        ),
+        label: Text(label),
+        selected: on,
+        onSelected: (_) => fn.toggle(type, value, label),
+      );
+    }
+
+    City? selectedCity;
+    for (final c in cities) {
+      if (c.id == selectedCityId) {
+        selectedCity = c;
+        break;
+      }
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final c in EventCategory.values.where(
+          (c) => c != EventCategory.unknown,
+        ))
+          bell(FollowType.category, c.name, categoryLabel(c)),
+        for (final s in sources) bell(FollowType.source, s.name, sourceLabel(s)),
+        if (selectedCity != null)
+          bell(FollowType.city, selectedCity.id, selectedCity.name),
+      ],
+    );
+  }
 }

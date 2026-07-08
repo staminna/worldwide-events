@@ -1,10 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../api/event_api.dart';
 import '../models/event.dart';
+import '../state/poster_color.dart';
 import 'category_style.dart';
+import 'save_button.dart';
 
 class EventCard extends StatelessWidget {
   const EventCard({super.key, required this.event, required this.onTap});
@@ -27,15 +30,48 @@ class EventCard extends StatelessWidget {
           children: [
             AspectRatio(
               aspectRatio: 16 / 9,
-              child: event.imageUrl.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: proxiedImage(event.imageUrl),
-                      fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => _placeholder(cs),
-                      placeholder: (_, __) =>
-                          Container(color: cs.surfaceContainerHighest),
-                    )
-                  : _placeholder(cs),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  event.imageUrl.isNotEmpty
+                      // Decode the thumbnail at its displayed physical size
+                      // rather than the source's full resolution — hi-res
+                      // images otherwise decode into memory at native size,
+                      // causing scroll jank and memory pressure across a grid.
+                      ? LayoutBuilder(
+                          builder: (context, constraints) {
+                            final cacheWidth =
+                                (constraints.maxWidth *
+                                        MediaQuery.devicePixelRatioOf(context))
+                                    .round();
+                            return CachedNetworkImage(
+                              imageUrl: proxiedImage(event.imageUrl),
+                              fit: BoxFit.cover,
+                              memCacheWidth: cacheWidth,
+                              errorWidget: (_, _, _) => _placeholder(cs),
+                              placeholder: (_, _) =>
+                                  Container(color: cs.surfaceContainerHighest),
+                            );
+                          },
+                        )
+                      : _placeholder(cs),
+                  Positioned(
+                    top: 2,
+                    right: 2,
+                    child: SaveButton(event: event, onImagery: true),
+                  ),
+                ],
+              ),
+            ),
+            // Thin accent tying the card to its poster's dominant color;
+            // falls back to the category color while the palette resolves.
+            Consumer(
+              builder: (context, ref, _) {
+                final color =
+                    ref.watch(posterColorProvider(event.imageUrl)).valueOrNull ??
+                    categoryColor(cs, event.category);
+                return Container(height: 3, color: color);
+              },
             ),
             Expanded(
               child: Padding(

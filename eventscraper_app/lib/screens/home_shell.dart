@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../state/follows.dart';
 import '../state/location.dart';
 import '../state/providers.dart';
+import '../util/notifications.dart';
 import 'home_screen.dart';
 import 'map_screen.dart';
 
@@ -15,15 +17,47 @@ class HomeShell extends ConsumerStatefulWidget {
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends ConsumerState<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell>
+    with WidgetsBindingObserver {
   int _index = 0;
+  // The map hosts a native GL PlatformView — don't spin it up at app boot
+  // (or in widget tests); build it the first time the tab is opened, then
+  // keep it alive so camera/selection survive tab switches.
+  bool _mapVisited = false;
 
   static const _promptedPrefKey = 'auto_locate_prompted';
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _autoLocate());
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoLocate();
+      _initAndCheckFollows();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-check follows when returning to the app (best-effort, foreground).
+    if (state == AppLifecycleState.resumed) _checkFollows();
+  }
+
+  Future<void> _initAndCheckFollows() async {
+    await initNotifications();
+    await _checkFollows();
+  }
+
+  Future<void> _checkFollows() async {
+    final follows = ref.read(followsProvider);
+    if (follows.isEmpty) return;
+    await checkFollowsAndNotify(ref.read(apiProvider), follows);
   }
 
   /// One-shot automatic "near me" on app launch: if we can know where the
@@ -69,30 +103,37 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // The map's immersive fullscreen hides the bottom nav.
+    final fullscreen = ref.watch(mapFullscreenProvider);
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: const [
-          HomeScreen(),
-          MapScreen(),
+        children: [
+          const HomeScreen(),
+          if (_mapVisited) const MapScreen() else const SizedBox.shrink(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.view_agenda_outlined),
-            selectedIcon: Icon(Icons.view_agenda),
-            label: 'Feed',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            selectedIcon: Icon(Icons.map),
-            label: 'Map',
-          ),
-        ],
-      ),
+      bottomNavigationBar: fullscreen
+          ? null
+          : NavigationBar(
+              selectedIndex: _index,
+              onDestinationSelected: (i) => setState(() {
+                _index = i;
+                if (i == 1) _mapVisited = true;
+              }),
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.view_agenda_outlined),
+                  selectedIcon: Icon(Icons.view_agenda),
+                  label: 'Feed',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map),
+                  label: 'Map',
+                ),
+              ],
+            ),
     );
   }
 }

@@ -185,4 +185,58 @@ class EventApi {
     final body = res.data as Map<String, dynamic>;
     return Event.fromJson(body['data'] as Map<String, dynamic>);
   }
+
+  /// Creates a user-authored event (stored server-side under the "manual"
+  /// source). [cityId] must be a catalog city so the event is reachable by
+  /// the feed's city filter. Returns the stored event.
+  Future<Event> createEvent({
+    required String title,
+    String description = '',
+    required EventCategory category,
+    required DateTime startsAt,
+    DateTime? endsAt,
+    required String cityId,
+    String venueName = '',
+    String address = '',
+    double? lat,
+    double? lon,
+    String imageUrl = '',
+  }) async {
+    final res = await _dio.post(
+      '/events',
+      data: {
+        'title': title,
+        'description': description,
+        'category': category.name,
+        'startsAt': startsAt.toUtc().toIso8601String(),
+        if (endsAt != null) 'endsAt': endsAt.toUtc().toIso8601String(),
+        'cityId': cityId,
+        'venueName': venueName,
+        'address': address,
+        'lat': ?lat,
+        'lon': ?lon,
+        'imageUrl': imageUrl,
+      },
+    );
+    final body = res.data as Map<String, dynamic>;
+    return Event.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Forward-geocodes a free-text query to candidate places (backend proxies
+  /// and rate-limits Nominatim). Returns an empty list on any failure —
+  /// callers treat it as "no matches".
+  Future<List<LocationResult>> searchLocation(String query) async {
+    try {
+      final res = await _dio.get(
+        '/geo/search',
+        queryParameters: {'q': query},
+      );
+      final body = res.data as Map<String, dynamic>;
+      final list = (body['data'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
+      return list.map(LocationResult.fromJson).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }

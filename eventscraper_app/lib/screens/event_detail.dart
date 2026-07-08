@@ -1,18 +1,21 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-// `latlong2` exports a `Path<LatLng>` type that shadows the `dart:ui` Path
-// used by CustomPainter. Hide it so canvas drawing resolves correctly.
-import 'package:latlong2/latlong.dart' hide Path;
+import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/event_api.dart';
 import '../models/event.dart';
+import '../state/poster_color.dart';
 import '../state/providers.dart';
+import '../util/calendar.dart';
+import '../util/geo.dart';
 import '../widgets/category_style.dart';
+import '../widgets/directions_buttons.dart';
+import '../widgets/save_button.dart';
 import 'image_viewer.dart';
+import 'venue_map_screen.dart';
 
 class EventDetailScreen extends ConsumerWidget {
   const EventDetailScreen({super.key, required this.eventId});
@@ -83,18 +86,50 @@ class _EventDetailView extends ConsumerWidget {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('Open on source site'),
-                onPressed: () async {
-                  final uri = Uri.tryParse(event.url);
-                  if (uri != null) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  }
-                },
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Only when we have real venue coordinates — navigating to a
+                // city centroid ("Approximate" cases) would mislead.
+                if (isVenueLevel) ...[
+                  DirectionsButtons(
+                    lat: event.venue.lat,
+                    lon: event.venue.lon,
+                    label: event.venue.name.isEmpty
+                        ? event.title
+                        : event.venue.name,
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.event_available_outlined),
+                        label: const Text('Add to calendar'),
+                        onPressed: () => addEventToCalendar(event),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Source site'),
+                        onPressed: () async {
+                          final uri = Uri.tryParse(event.url);
+                          if (uri != null) {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -185,14 +220,20 @@ class _HeroHeader extends StatelessWidget {
           bottom: false,
           child: Padding(
             padding: const EdgeInsets.all(8),
-            child: Material(
-              color: Colors.black.withValues(alpha: 0.35),
-              shape: const CircleBorder(),
-              child: IconButton(
-                color: Colors.white,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
+            child: Row(
+              children: [
+                Material(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    color: Colors.white,
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
+                ),
+                const Spacer(),
+                SaveButton(event: event, onImagery: true),
+              ],
             ),
           ),
         ),
@@ -222,6 +263,22 @@ class _HeroHeader extends StatelessWidget {
               ),
             ),
           ),
+        // Poster-colored accent at the base of the hero, tying the header to
+        // the artwork; falls back to the category color.
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Consumer(
+            builder: (context, ref, _) {
+              final cs = Theme.of(context).colorScheme;
+              final color =
+                  ref.watch(posterColorProvider(event.imageUrl)).valueOrNull ??
+                  categoryColor(cs, event.category);
+              return Container(height: 5, color: color);
+            },
+          ),
+        ),
       ],
     );
   }
@@ -336,6 +393,8 @@ class _IconRow extends StatelessWidget {
   }
 }
 
+/// A static, non-interactive map preview with a teardrop pin on the venue.
+/// Tapping anywhere opens the full-screen interactive [VenueMapScreen].
 class _DetailMap extends StatelessWidget {
   const _DetailMap({
     required this.center,
@@ -349,8 +408,18 @@ class _DetailMap extends StatelessWidget {
   final Event event;
   final String? label;
 
+  void _openFullscreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            VenueMapScreen(event: event, center: center, approxLabel: label),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: ClipRRect(
@@ -358,81 +427,62 @@ class _DetailMap extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: FlutterMap(
-                options: MapOptions(
-                  initialCenter: center,
-                  initialZoom: zoom,
-                  minZoom: 2,
-                  maxZoom: 18,
-                  interactionOptions: const InteractionOptions(
-                    flags:
-                        InteractiveFlag.pinchZoom |
-                        InteractiveFlag.drag |
-                        InteractiveFlag.doubleTapZoom |
-                        InteractiveFlag.scrollWheelZoom,
-                  ),
+              child: MapLibreMap(
+                styleString: mapStyleUrl,
+                initialCameraPosition: CameraPosition(
+                  target: center,
+                  zoom: zoom,
                 ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.jorgenunes.eventscraper_app',
-                    maxNativeZoom: 19,
-                  ),
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: center,
-                        // Wider/taller than the visual so the pin tip
-                        // (anchor) sits exactly on the coordinate.
-                        width: 56,
-                        height: 64,
-                        alignment: Alignment.topCenter,
-                        child: _LocationPin(category: event.category),
+                // Static preview — the full-screen map handles interaction.
+                scrollGesturesEnabled: false,
+                zoomGesturesEnabled: false,
+                rotateGesturesEnabled: false,
+                tiltGesturesEnabled: false,
+                dragEnabled: false,
+                compassEnabled: false,
+              ),
+            ),
+            // Teardrop pin, tip anchored on the venue at map centre.
+            IgnorePointer(
+              child: Center(
+                child: Transform.translate(
+                  offset: const Offset(0, -21),
+                  child: Icon(
+                    Icons.location_on,
+                    size: 46,
+                    color: categoryColor(cs, event.category),
+                    shadows: const [
+                      Shadow(
+                        color: Colors.black54,
+                        blurRadius: 6,
+                        offset: Offset(0, 2),
                       ),
                     ],
                   ),
-                  const RichAttributionWidget(
-                    attributions: [
-                      TextSourceAttribution('© OpenStreetMap contributors'),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
             if (label != null)
               Positioned(
                 left: 12,
                 top: 12,
-                child: Material(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  shape: const StadiumBorder(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.location_city,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Approximate • $label',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                child: _MapChip(
+                  icon: Icons.location_city,
+                  text: 'Approximate • $label',
                 ),
               ),
+            const Positioned(
+              right: 12,
+              bottom: 12,
+              child: _MapChip(icon: Icons.zoom_out_map, text: 'Tap to expand'),
+            ),
+            // Whole preview is one big tap target → open the full map.
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openFullscreen(context),
+              ),
+            ),
           ],
         ),
       ),
@@ -440,75 +490,32 @@ class _DetailMap extends StatelessWidget {
   }
 }
 
-/// Pill-shaped pin: circular head with category icon + a triangular tail
-/// that points at the actual coordinate.
-class _LocationPin extends StatelessWidget {
-  const _LocationPin({required this.category});
-
-  final EventCategory category;
+class _MapChip extends StatelessWidget {
+  const _MapChip({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final color = categoryColor(cs, category);
-    final icon = categoryIcon(category);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Icon(icon, color: Colors.white, size: 22),
+    return Material(
+      color: Colors.black.withValues(alpha: 0.55),
+      shape: const StadiumBorder(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: Colors.white),
+            const SizedBox(width: 6),
+            Text(
+              text,
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ],
         ),
-        // Triangular tail. CustomPaint keeps the tail perfectly centered
-        // below the head so the tip lands on the LatLng anchor.
-        CustomPaint(
-          size: const Size(14, 14),
-          painter: _PinTailPainter(color: color),
-        ),
-      ],
+      ),
     );
   }
-}
-
-class _PinTailPainter extends CustomPainter {
-  _PinTailPainter({required this.color});
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final shadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.25)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    final body = Paint()..color = color;
-    final stroke = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width / 2, size.height)
-      ..close();
-    canvas.drawPath(path, shadow);
-    canvas.drawPath(path, body);
-    canvas.drawPath(path, stroke);
-  }
-
-  @override
-  bool shouldRepaint(covariant _PinTailPainter old) => old.color != color;
 }
 
 class _NoCoordsPane extends StatelessWidget {

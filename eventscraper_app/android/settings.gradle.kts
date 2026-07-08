@@ -20,6 +20,9 @@ pluginManagement {
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.11.1" apply false
+    // maplibre_gl ships MapLibre Android built with Kotlin 2.2 metadata,
+    // which Flutter's built-in Kotlin (2.0) can't consume.
+    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
 }
 
 include(":app")

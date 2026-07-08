@@ -31,6 +31,11 @@
 
   <title>eventscraper_app</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- maplibre_gl_web 0.26.x needs MapLibre GL JS loaded globally; keep the
+       version in sync with the plugin README when upgrading. -->
+  <script src="https://unpkg.com/maplibre-gl@^5.24.0/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@^5.24.0/dist/maplibre-gl.css" rel="stylesheet"/>
 </head>
 <body>
   <!--

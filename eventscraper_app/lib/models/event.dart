@@ -43,6 +43,26 @@ class NearestCity {
   );
 }
 
+/// A candidate place returned by forward geocoding (GET /geo/search),
+/// used by the map search bar and the add-event venue picker.
+class LocationResult {
+  final String displayName;
+  final double lat;
+  final double lon;
+
+  const LocationResult({
+    required this.displayName,
+    required this.lat,
+    required this.lon,
+  });
+
+  factory LocationResult.fromJson(Map<String, dynamic> json) => LocationResult(
+    displayName: json['displayName'] as String? ?? '',
+    lat: (json['lat'] as num?)?.toDouble() ?? 0,
+    lon: (json['lon'] as num?)?.toDouble() ?? 0,
+  );
+}
+
 class Venue {
   final String name;
   final String address;
@@ -60,6 +80,13 @@ class Venue {
       lon: (json['lon'] as num?)?.toDouble() ?? 0,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'address': address,
+    'lat': lat,
+    'lon': lon,
+  };
 }
 
 class Price {
@@ -81,6 +108,13 @@ class Price {
     currency: json['currency'] as String? ?? '',
     free: json['free'] as bool? ?? false,
   );
+
+  Map<String, dynamic> toJson() => {
+    'min': min,
+    'max': max,
+    'currency': currency,
+    'free': free,
+  };
 }
 
 enum EventSource {
@@ -90,6 +124,7 @@ enum EventSource {
   ticketmaster,
   meetup,
   viralagenda,
+  manual,
   unknown,
 }
 
@@ -107,6 +142,8 @@ EventSource sourceFromString(String s) {
       return EventSource.meetup;
     case 'viralagenda':
       return EventSource.viralagenda;
+    case 'manual':
+      return EventSource.manual;
   }
   return EventSource.unknown;
 }
@@ -125,6 +162,8 @@ String sourceLabel(EventSource s) {
       return 'Meetup';
     case EventSource.viralagenda:
       return 'Viral Agenda';
+    case EventSource.manual:
+      return 'Added by you';
     case EventSource.unknown:
       return 'Unknown';
   }
@@ -218,6 +257,26 @@ class Event {
     scrapedAt:
         DateTime.tryParse(json['scrapedAt'] as String? ?? '') ?? DateTime.now(),
   );
+
+  /// Round-trips through [Event.fromJson] — used to persist saved events to
+  /// shared_preferences so the agenda renders offline without re-fetching.
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'source': source.name,
+    'sourceId': sourceId,
+    'title': title,
+    'description': description,
+    'category': category.name,
+    'startsAt': startsAt.toIso8601String(),
+    'endsAt': endsAt?.toIso8601String(),
+    'venue': venue.toJson(),
+    'city': city,
+    'country': country,
+    'url': url,
+    'imageUrl': imageUrl,
+    'price': price?.toJson(),
+    'scrapedAt': scrapedAt.toIso8601String(),
+  };
 }
 
 class SourceInfo {

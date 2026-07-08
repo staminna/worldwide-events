@@ -1,15 +1,29 @@
+import 'dart:math' as math;
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
 
+import '../api/event_api.dart';
+import '../api/routing_api.dart';
 import '../models/event.dart';
 import '../state/location.dart';
 import '../state/providers.dart';
+import '../util/geo.dart';
 import '../widgets/category_style.dart';
+import '../widgets/directions_buttons.dart';
+import '../widgets/location_search_field.dart';
+
+/// Beyond this straight-line distance we don't fetch a walking route — the
+/// deep-link buttons cover the "too far to walk" case.
+const _walkRouteMaxMeters = 2500.0;
+
+/// Zoom level where the heatmap hands over to clusters/dots.
+const _heatToPinsZoom = 9.0;
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -19,8 +33,26 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
-  final MapController _controller = MapController();
+  MapLibreMapController? _controller;
+  bool _styleReady = false;
   Event? _selected;
+  WalkRoute? _walkRoute;
+  List<Event> _placed = const [];
+  // Display coordinates parallel to _placed: events sharing a coordinate (a
+  // city centroid) are fanned out into a ring so each is visible/tappable.
+  List<LatLng> _placedPoints = const [];
+  // Identity of the feed.events list we last derived _placed from, so rebuilds
+  // triggered by camera/GPS/fullscreen ticks don't re-scan the whole feed.
+  List<Event>? _lastSyncedEvents;
+
+  @override
+  void dispose() {
+    // Leaving the map must not strand the app in immersive mode.
+    if (ref.read(mapFullscreenProvider)) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+    super.dispose();
+  }
 
   Future<void> _goToMyLocation() async {
     final messenger = ScaffoldMessenger.of(context);
@@ -28,7 +60,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       await ref.read(locationProvider.notifier).refreshFix();
       final loc = ref.read(locationProvider);
       if (loc.hasFix) {
-        _controller.move(LatLng(loc.lat!, loc.lon!), 12);
+        await _controller?.animateCamera(
+          CameraUpdate.newLatLngZoom(LatLng(loc.lat!, loc.lon!), 12),
+        );
       }
     } catch (e) {
       messenger.showSnackBar(
@@ -41,10 +75,25 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
+  void _setFullscreen(bool on) {
+    ref.read(mapFullscreenProvider.notifier).state = on;
+    SystemChrome.setEnabledSystemUIMode(
+      on ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
+  }
+
+  Future<void> _flyToSearch(LocationResult r) async {
+    await _controller?.animateCamera(
+      CameraUpdate.newLatLngZoom(LatLng(r.lat, r.lon), 13),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(eventFeedProvider);
     final loc = ref.watch(locationProvider);
+    final fullscreen = ref.watch(mapFullscreenProvider);
+    ref.listen(locationProvider, (_, next) => _syncMySource(next));
 
     if (feed.loading && feed.events.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -52,75 +101,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (feed.error != null && feed.events.isEmpty) {
       return Center(child: Text('Error: ${feed.error}'));
     }
-    final placed = feed.events
-        .where((e) => e.venue.lat != 0 && e.venue.lon != 0)
-        .toList();
+    // Only re-derive placed events (and re-push the map sources) when the feed
+    // instance actually changes — build() runs on every camera move, GPS fix,
+    // and fullscreen toggle, and the old code re-scanned every event each time.
+    if (!identical(feed.events, _lastSyncedEvents)) {
+      _lastSyncedEvents = feed.events;
+      _placed = feed.events
+          .where((e) => e.venue.lat != 0 && e.venue.lon != 0)
+          .toList();
+      _placedPoints = _spread(_placed);
+      _syncEventSources();
+    }
+
     return Stack(
       children: [
-        FlutterMap(
-          mapController: _controller,
-          options: MapOptions(
-            initialCenter: _initialCenter(placed),
-            initialZoom: placed.length > 50 ? 2.5 : 4,
-            minZoom: 1,
-            maxZoom: 18,
-            onTap: (_, __) => setState(() => _selected = null),
+        MapLibreMap(
+          styleString: mapStyleUrl,
+          initialCameraPosition: CameraPosition(
+            target: _initialCenter(_placed),
+            zoom: _placed.length > 50 ? 2.5 : 4,
           ),
-          children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.jorgenunes.eventscraper_app',
-              maxNativeZoom: 19,
-            ),
-            MarkerClusterLayerWidget(
-              options: MarkerClusterLayerOptions(
-                maxClusterRadius: 60,
-                size: const Size(46, 46),
-                alignment: Alignment.center,
-                padding: const EdgeInsets.all(40),
-                markers: [
-                  for (final e in placed)
-                    Marker(
-                      point: LatLng(e.venue.lat, e.venue.lon),
-                      width: 46,
-                      height: 52,
-                      // Anchor the teardrop's tip on the coordinate: with
-                      // topCenter the whole marker sits above the point, so
-                      // its bottom tip lands exactly on the location.
-                      alignment: Alignment.topCenter,
-                      child: _MapMarker(
-                        event: e,
-                        selected: _selected?.id == e.id,
-                        onTap: () => setState(() => _selected = e),
-                      ),
-                    ),
-                ],
-                builder: (context, markers) =>
-                    _ClusterBubble(count: markers.length),
-              ),
-            ),
-            if (loc.hasFix)
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: LatLng(loc.lat!, loc.lon!),
-                    width: 22,
-                    height: 22,
-                    child: const _UserDot(),
-                  ),
-                ],
-              ),
-            const RichAttributionWidget(
-              attributions: [
-                TextSourceAttribution('© OpenStreetMap contributors'),
-              ],
-            ),
-          ],
+          minMaxZoomPreference: const MinMaxZoomPreference(1, 18),
+          trackCameraPosition: true,
+          compassEnabled: false,
+          // The location fix comes from LocationState; we draw our own dot
+          // instead of requesting the platform puck (extra permissions flow).
+          myLocationEnabled: false,
+          onMapCreated: (c) {
+            _controller = c;
+            // Taps on interactive layers arrive here, NOT via onMapClick —
+            // the plugin splits the two (see featureTapsTriggersMapClick).
+            c.onFeatureTapped.add(_onFeatureTap);
+          },
+          onStyleLoadedCallback: _onStyleLoaded,
+          onMapClick: _onMapClick,
         ),
         Positioned(
           right: 12,
           // Lift the button clear of the selected-event card when one shows.
-          bottom: _selected == null ? 16 : 108,
+          bottom: _selected == null ? 16 : 196,
           child: FloatingActionButton.small(
             heroTag: 'map-locate',
             tooltip: 'My location',
@@ -134,12 +153,67 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 : const Icon(Icons.my_location),
           ),
         ),
-        Positioned(
-          top: 12,
-          left: 12,
-          right: 12,
-          child: _MapTopBar(count: placed.length, total: feed.events.length),
-        ),
+        // Top controls: search + count, hidden in immersive fullscreen.
+        if (!fullscreen)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Material(
+                            elevation: 3,
+                            borderRadius: BorderRadius.circular(12),
+                            child: LocationSearchField(
+                              hintText: 'Search the map…',
+                              onSelected: _flyToSearch,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _RoundMapButton(
+                          icon: Icons.fullscreen,
+                          tooltip: 'Full screen',
+                          onTap: () => _setFullscreen(true),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _MapTopBar(
+                      count: _placed.length,
+                      total: feed.events.length,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        // Exit-fullscreen affordance while immersive.
+        if (fullscreen)
+          Positioned(
+            top: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: _RoundMapButton(
+                  icon: Icons.fullscreen_exit,
+                  tooltip: 'Exit full screen',
+                  onTap: () => _setFullscreen(false),
+                ),
+              ),
+            ),
+          ),
         if (_selected != null)
           Positioned(
             left: 12,
@@ -147,7 +221,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             bottom: 12,
             child: _SelectedEventCard(
               event: _selected!,
-              onClose: () => setState(() => _selected = null),
+              walkRoute: _walkRoute,
+              onClose: _clearSelection,
               onOpen: () => context.push('/event/${_selected!.id}'),
             ),
           ),
@@ -164,142 +239,492 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
     return LatLng(lat / events.length, lon / events.length);
   }
+
+  // --- Style: sources & layers -------------------------------------------
+
+  static Map<String, dynamic> _fc(List<Map<String, dynamic>> features) => {
+    'type': 'FeatureCollection',
+    'features': features,
+  };
+
+  static Map<String, dynamic> _pointFeature(
+    double lat,
+    double lon, {
+    Map<String, dynamic> properties = const {},
+    // The top-level feature id is what onFeatureTapped reports back. It must
+    // be numeric: MapLibre GL (web especially) only round-trips numeric
+    // GeoJSON ids through queryRenderedFeatures, so we use the placed-event
+    // index and resolve the Event from it on tap.
+    int? id,
+  }) => {
+    'type': 'Feature',
+    'id': ?id,
+    'properties': properties,
+    'geometry': {
+      'type': 'Point',
+      'coordinates': [lon, lat],
+    },
+  };
+
+  Future<void> _onStyleLoaded() async {
+    final c = _controller;
+    if (c == null || !mounted) return;
+    final cs = Theme.of(context).colorScheme;
+
+    // Clustered source for pins, plus an unclustered twin for the heatmap
+    // (clustering collapses points, which would flatten the heat density).
+    await c.addSource(
+      'events',
+      const GeojsonSourceProperties(
+        data: {'type': 'FeatureCollection', 'features': []},
+        cluster: true,
+        clusterRadius: 50,
+        clusterMaxZoom: 14,
+      ),
+    );
+    for (final id in ['events-heat', 'route', 'selected', 'me']) {
+      await c.addSource(
+        id,
+        const GeojsonSourceProperties(
+          data: {'type': 'FeatureCollection', 'features': []},
+        ),
+      );
+    }
+
+    // Kepler-style handover: the heatmap fades out exactly as the
+    // cluster/dot layers become visible — all native zoom expressions, no
+    // Dart-side zoom listener.
+    await c.addHeatmapLayer(
+      'events-heat',
+      'heat',
+      const HeatmapLayerProperties(
+        heatmapOpacity: [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          _heatToPinsZoom - 2,
+          0.9,
+          _heatToPinsZoom,
+          0.0,
+        ],
+        heatmapRadius: [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          0,
+          8,
+          _heatToPinsZoom,
+          26,
+        ],
+        heatmapIntensity: [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          0,
+          0.6,
+          _heatToPinsZoom,
+          1.3,
+        ],
+        heatmapColor: [
+          'interpolate',
+          ['linear'],
+          ['heatmap-density'],
+          0,
+          'rgba(0,0,0,0)',
+          0.2,
+          '#2c1e5c',
+          0.4,
+          '#7b2f9e',
+          0.6,
+          '#d63a83',
+          0.8,
+          '#f8a45c',
+          1,
+          '#fdeca6',
+        ],
+      ),
+      maxzoom: _heatToPinsZoom + 1,
+    );
+
+    await c.addLineLayer(
+      'route',
+      'route-line',
+      const LineLayerProperties(
+        lineColor: '#4dd0e1',
+        lineWidth: 4.5,
+        lineOpacity: 0.9,
+        lineJoin: 'round',
+        lineCap: 'round',
+      ),
+      enableInteraction: false,
+    );
+
+    // Same 3 tiers the old _ClusterBubble used (<10, <100, 100+).
+    await c.addCircleLayer(
+      'events',
+      'clusters',
+      CircleLayerProperties(
+        circleColor: [
+          'step',
+          ['get', 'point_count'],
+          hexColor(cs.primary),
+          10,
+          hexColor(cs.secondary),
+          100,
+          hexColor(cs.tertiary),
+        ],
+        circleRadius: [
+          'step',
+          ['get', 'point_count'],
+          16,
+          10,
+          19,
+          100,
+          25,
+        ],
+        circleOpacity: 0.92,
+        circleStrokeColor: '#ffffff',
+        circleStrokeWidth: 2,
+      ),
+      minzoom: _heatToPinsZoom,
+      filter: ['has', 'point_count'],
+    );
+    await c.addSymbolLayer(
+      'events',
+      'cluster-count',
+      const SymbolLayerProperties(
+        textField: ['get', 'point_count_abbreviated'],
+        // Verified present in the CARTO Dark Matter glyph set.
+        textFont: ['Montserrat Medium'],
+        textSize: 13,
+        textColor: '#ffffff',
+        textAllowOverlap: true,
+        textIgnorePlacement: true,
+      ),
+      minzoom: _heatToPinsZoom,
+      filter: ['has', 'point_count'],
+    );
+
+    // Kepler-style dots, colored by category (single source of truth stays
+    // categoryColor in category_style.dart).
+    await c.addCircleLayer(
+      'events',
+      'event-dots',
+      CircleLayerProperties(
+        circleColor: _categoryColorExpression(cs),
+        circleRadius: [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          _heatToPinsZoom,
+          5,
+          16,
+          10,
+        ],
+        circleStrokeColor: '#ffffff',
+        circleStrokeWidth: 1.5,
+      ),
+      minzoom: _heatToPinsZoom,
+      filter: [
+        '!',
+        ['has', 'point_count'],
+      ],
+    );
+
+    // Decorative layers opt out of hit-testing so taps on them fall through
+    // to the event dots (or clear the selection) instead of being swallowed.
+    await c.addCircleLayer(
+      'selected',
+      'selected-ring',
+      const CircleLayerProperties(
+        circleRadius: 13,
+        circleColor: 'rgba(255,255,255,0.15)',
+        circleStrokeColor: '#ffffff',
+        circleStrokeWidth: 2.5,
+      ),
+      enableInteraction: false,
+    );
+
+    // The classic blue "you are here" dot with a white ring.
+    await c.addCircleLayer(
+      'me',
+      'me-halo',
+      const CircleLayerProperties(circleRadius: 10, circleColor: '#ffffff'),
+      enableInteraction: false,
+    );
+    await c.addCircleLayer(
+      'me',
+      'me-dot',
+      const CircleLayerProperties(circleRadius: 6.5, circleColor: '#1A73E8'),
+      enableInteraction: false,
+    );
+
+    if (!mounted) return;
+    _styleReady = true;
+    _syncEventSources();
+    _syncMySource(ref.read(locationProvider));
+  }
+
+  /// `['match', category, <name>, <hex>, ..., fallback]` built from the enum
+  /// so new categories can't silently fall out of sync with the feed chips.
+  List<Object> _categoryColorExpression(ColorScheme cs) {
+    final expr = <Object>[
+      'match',
+      ['get', 'category'],
+    ];
+    for (final cat in EventCategory.values) {
+      if (cat == EventCategory.unknown) continue;
+      expr
+        ..add(cat.name)
+        ..add(hexColor(categoryColor(cs, cat)));
+    }
+    expr.add(hexColor(categoryColor(cs, EventCategory.unknown)));
+    return expr;
+  }
+
+  // --- Data sync -----------------------------------------------------------
+
+  /// Events without a real venue coordinate fall back to their city centroid,
+  /// so many pile onto one point. Fan each such group out into a ring around
+  /// the shared point so every event is individually visible and tappable —
+  /// they still cluster when zoomed out. Deterministic (no random jitter).
+  List<LatLng> _spread(List<Event> events) {
+    const earthR = 6371000.0;
+    final groups = <String, List<int>>{};
+    for (var i = 0; i < events.length; i++) {
+      final v = events[i].venue;
+      final key = '${v.lat.toStringAsFixed(4)},${v.lon.toStringAsFixed(4)}';
+      (groups[key] ??= []).add(i);
+    }
+    final points = List<LatLng>.filled(events.length, const LatLng(0, 0));
+    for (final idxs in groups.values) {
+      final n = idxs.length;
+      if (n == 1) {
+        final v = events[idxs.first].venue;
+        points[idxs.first] = LatLng(v.lat, v.lon);
+        continue;
+      }
+      // Ring radius grows with the count so dense centroids stay legible.
+      final radiusMeters = 90.0 * math.sqrt(n.toDouble());
+      for (var k = 0; k < n; k++) {
+        final v = events[idxs[k]].venue;
+        final angle = 2 * math.pi * k / n;
+        final dLat = radiusMeters * math.sin(angle) / earthR * 180 / math.pi;
+        final dLon =
+            radiusMeters *
+            math.cos(angle) /
+            (earthR * math.cos(v.lat * math.pi / 180)) *
+            180 /
+            math.pi;
+        points[idxs[k]] = LatLng(v.lat + dLat, v.lon + dLon);
+      }
+    }
+    return points;
+  }
+
+  /// The display (fanned-out) point for an event, matched by id.
+  LatLng _pointFor(Event e) {
+    final i = _placed.indexWhere((p) => p.id == e.id);
+    return (i >= 0 && i < _placedPoints.length)
+        ? _placedPoints[i]
+        : LatLng(e.venue.lat, e.venue.lon);
+  }
+
+  void _syncEventSources() {
+    final c = _controller;
+    if (c == null || !_styleReady) return;
+    // Callers are already gated on feed-identity change (build) or one-shot
+    // style load, so this pushes only when the data genuinely changed.
+    final fc = _fc([
+      for (var i = 0; i < _placed.length; i++)
+        _pointFeature(
+          _placedPoints[i].latitude,
+          _placedPoints[i].longitude,
+          id: i,
+          properties: {
+            'category': _placed[i].category.name,
+            'title': _placed[i].title,
+          },
+        ),
+    ]);
+    c.setGeoJsonSource('events', fc);
+    c.setGeoJsonSource('events-heat', fc);
+  }
+
+  void _syncMySource(LocationState loc) {
+    final c = _controller;
+    if (c == null || !_styleReady) return;
+    c.setGeoJsonSource(
+      'me',
+      _fc([if (loc.hasFix) _pointFeature(loc.lat!, loc.lon!)]),
+    );
+  }
+
+  // --- Selection & routing -------------------------------------------------
+
+  /// Fires only for taps that hit no interactive feature — the plugin routes
+  /// feature hits to [_onFeatureTap] instead.
+  void _onMapClick(math.Point<double> point, LatLng latLng) {
+    _clearSelection();
+  }
+
+  void _onFeatureTap(
+    math.Point<double> point,
+    LatLng latLng,
+    String id,
+    String layerId,
+    Annotation? annotation,
+  ) {
+    if (!mounted) return;
+    if (layerId == 'clusters' || layerId == 'cluster-count') {
+      _showClusterSheet(point, latLng);
+      return;
+    }
+    if (layerId != 'event-dots') return;
+    final idx = int.tryParse(id);
+    if (idx == null || idx < 0 || idx >= _placed.length) return;
+    _select(_placed[idx], _placedPoints[idx]);
+  }
+
+  /// Cluster tap: list the events under the tapped cluster in a bottom sheet.
+  /// MapLibre's plugin doesn't expose cluster leaves, so we approximate the
+  /// cluster footprint by converting its ~50px radius to meters and collecting
+  /// the placed events that fall inside it (nearest first).
+  Future<void> _showClusterSheet(
+    math.Point<double> point,
+    LatLng center,
+  ) async {
+    final c = _controller;
+    if (c == null) return;
+
+    double radiusMeters = 0;
+    try {
+      final edge = await c.toLatLng(math.Point(point.x + 55, point.y));
+      radiusMeters = haversineMeters(
+        center.latitude,
+        center.longitude,
+        edge.latitude,
+        edge.longitude,
+      );
+    } catch (_) {
+      // toLatLng can fail mid-gesture; the nearest-N fallback covers it.
+    }
+
+    final scored = [
+      for (var i = 0; i < _placed.length; i++)
+        (
+          _placed[i],
+          haversineMeters(
+            center.latitude,
+            center.longitude,
+            _placedPoints[i].latitude,
+            _placedPoints[i].longitude,
+          ),
+        ),
+    ]..sort((a, b) => a.$2.compareTo(b.$2));
+
+    var members = radiusMeters > 0
+        ? [
+            for (final s in scored)
+              if (s.$2 <= radiusMeters) s.$1,
+          ]
+        : <Event>[];
+    if (members.isEmpty) members = [for (final s in scored.take(12)) s.$1];
+    if (members.length > 60) members = members.sublist(0, 60);
+
+    if (!mounted || members.isEmpty) return;
+    final chosen = await showModalBottomSheet<Event>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _ClusterSheet(events: members),
+    );
+    if (chosen != null) _selectAndFly(chosen);
+  }
+
+  /// Selects an event chosen from the cluster sheet and eases the camera to it.
+  void _selectAndFly(Event e) {
+    final point = _pointFor(e);
+    _select(e, point);
+    _controller?.animateCamera(CameraUpdate.newLatLngZoom(point, 15));
+  }
+
+  void _select(Event e, [LatLng? at]) {
+    final point = at ?? _pointFor(e);
+    setState(() {
+      _selected = e;
+      _walkRoute = null;
+    });
+    final c = _controller;
+    c?.setGeoJsonSource(
+      'selected',
+      _fc([_pointFeature(point.latitude, point.longitude)]),
+    );
+    c?.setGeoJsonSource('route', _fc([]));
+    _maybeFetchRoute(e);
+  }
+
+  void _clearSelection() {
+    if (_selected == null) return;
+    setState(() {
+      _selected = null;
+      _walkRoute = null;
+    });
+    _controller?.setGeoJsonSource('selected', _fc([]));
+    _controller?.setGeoJsonSource('route', _fc([]));
+  }
+
+  Future<void> _maybeFetchRoute(Event e) async {
+    final loc = ref.read(locationProvider);
+    if (!loc.hasFix) return;
+    final meters = haversineMeters(
+      loc.lat!,
+      loc.lon!,
+      e.venue.lat,
+      e.venue.lon,
+    );
+    if (meters > _walkRouteMaxMeters) return;
+    final route = await fetchWalkingRoute(
+      fromLat: loc.lat!,
+      fromLon: loc.lon!,
+      toLat: e.venue.lat,
+      toLon: e.venue.lon,
+    );
+    // Guard against a stale response landing after the user moved on.
+    if (!mounted || route == null || _selected?.id != e.id) return;
+    _controller?.setGeoJsonSource(
+      'route',
+      _fc([
+        {'type': 'Feature', 'properties': {}, 'geometry': route.geometry},
+      ]),
+    );
+    setState(() => _walkRoute = route);
+  }
 }
 
-class _MapMarker extends StatelessWidget {
-  const _MapMarker({
-    required this.event,
-    required this.selected,
+/// A circular surface-colored icon button matching the map overlay chrome.
+class _RoundMapButton extends StatelessWidget {
+  const _RoundMapButton({
+    required this.icon,
+    required this.tooltip,
     required this.onTap,
   });
 
-  final Event event;
-  final bool selected;
+  final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final color = categoryColor(cs, event.category);
-    final glyph = categoryIcon(event.category);
-    final scale = selected ? 1.18 : 1.0;
-    // A modern teardrop pin: a colored map-pin glyph with a white outline and
-    // a recessed white disc holding the category icon. Bottom-aligned so the
-    // tip sits at the very bottom of the box (the Marker anchors that to the
-    // coordinate).
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedScale(
-        scale: scale,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOutBack,
-        child: SizedBox(
-          width: 46,
-          height: 52,
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.bottomCenter,
-            children: [
-              // White halo behind, giving the pin a crisp edge on busy maps.
-              const Align(
-                alignment: Alignment.bottomCenter,
-                child: Icon(Icons.location_on, size: 46, color: Colors.white),
-              ),
-              // The colored pin body with a soft drop shadow.
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Icon(
-                  Icons.location_on,
-                  size: 42,
-                  color: color,
-                  shadows: const [
-                    Shadow(
-                      color: Color(0x59000000),
-                      blurRadius: 5,
-                      offset: Offset(0, 3),
-                    ),
-                  ],
-                ),
-              ),
-              // Category glyph in a white disc set into the pin's head.
-              Align(
-                alignment: const Alignment(0, -0.34),
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                  ),
-                  child: Icon(glyph, size: 12, color: color),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The classic blue "you are here" dot with a white ring.
-class _UserDot extends StatelessWidget {
-  const _UserDot();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: const Color(0xFF1A73E8),
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ClusterBubble extends StatelessWidget {
-  const _ClusterBubble({required this.count});
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    // Tier the bubble size + color so dense clusters read at a glance.
-    final tier = count >= 100 ? 2 : (count >= 10 ? 1 : 0);
-    final size = [40.0, 46.0, 56.0][tier];
-    final color = [cs.primary, cs.secondary, cs.tertiary][tier];
-    return Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color.withValues(alpha: 0.92),
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Text(
-        '$count',
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-          fontSize: tier == 2 ? 16 : 14,
-        ),
+    return Material(
+      elevation: 3,
+      shape: const CircleBorder(),
+      color: cs.surface,
+      child: IconButton(
+        tooltip: tooltip,
+        icon: Icon(icon, color: cs.onSurface),
+        onPressed: onTap,
       ),
     );
   }
@@ -347,31 +772,168 @@ class _MapTopBar extends StatelessWidget {
 class _SelectedEventCard extends StatelessWidget {
   const _SelectedEventCard({
     required this.event,
+    required this.walkRoute,
     required this.onClose,
     required this.onOpen,
   });
 
   final Event event;
+  final WalkRoute? walkRoute;
   final VoidCallback onClose;
   final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final fmt = DateFormat.MMMd().add_jm();
+    final accent = categoryColor(cs, event.category);
+    final where = event.venue.name.isNotEmpty
+        ? '${event.venue.name} • ${event.city}'
+        : event.city;
     return Card(
       elevation: 6,
-      child: ListTile(
-        title: Text(event.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          '${fmt.format(event.startsAt.toLocal())} • ${event.city}',
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(height: 4, color: accent),
+          ListTile(
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 52,
+                height: 52,
+                child: event.imageUrl.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: proxiedImage(event.imageUrl),
+                        fit: BoxFit.cover,
+                        memCacheWidth: 120,
+                        errorWidget: (_, _, _) =>
+                            Container(color: cs.surfaceContainerHighest),
+                        placeholder: (_, _) =>
+                            Container(color: cs.surfaceContainerHighest),
+                      )
+                    : Container(
+                        color: cs.surfaceContainerHighest,
+                        child: Icon(Icons.event, size: 22, color: cs.outline),
+                      ),
+              ),
+            ),
+            title: Text(
+              event.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              '${categoryLabel(event.category)} • '
+              '${fmt.format(event.startsAt.toLocal())}\n$where'
+              '${walkRoute != null ? '  🚶 ${walkRoute!.walkLabel}' : ''}',
+            ),
+            isThreeLine: true,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.open_in_new),
+                  onPressed: onOpen,
+                ),
+                IconButton(icon: const Icon(Icons.close), onPressed: onClose),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: DirectionsButtons(
+              lat: event.venue.lat,
+              lon: event.venue.lon,
+              label: event.venue.name.isEmpty ? event.title : event.venue.name,
+              compact: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom-sheet list of the events under a tapped map cluster. Returns the
+/// chosen event via `Navigator.pop` so the map can select and fly to it.
+class _ClusterSheet extends StatelessWidget {
+  const _ClusterSheet({required this.events});
+
+  final List<Event> events;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final fmt = DateFormat.MMMEd().add_jm();
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.5,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      builder: (context, controller) => ListView.separated(
+        controller: controller,
+        padding: EdgeInsets.fromLTRB(
+          16,
+          0,
+          16,
+          16 + MediaQuery.viewPaddingOf(context).bottom,
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(icon: const Icon(Icons.open_in_new), onPressed: onOpen),
-            IconButton(icon: const Icon(Icons.close), onPressed: onClose),
-          ],
-        ),
+        itemCount: events.length + 1,
+        separatorBuilder: (_, i) =>
+            i == 0 ? const SizedBox.shrink() : const Divider(height: 1),
+        itemBuilder: (context, i) {
+          if (i == 0) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                '${events.length} events here',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            );
+          }
+          final e = events[i - 1];
+          return ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 52,
+                height: 52,
+                child: e.imageUrl.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: proxiedImage(e.imageUrl),
+                        fit: BoxFit.cover,
+                        memCacheWidth: 120,
+                        errorWidget: (_, _, _) =>
+                            Container(color: cs.surfaceContainerHighest),
+                        placeholder: (_, _) =>
+                            Container(color: cs.surfaceContainerHighest),
+                      )
+                    : Container(
+                        color: cs.surfaceContainerHighest,
+                        child: Icon(Icons.event, size: 20, color: cs.outline),
+                      ),
+              ),
+            ),
+            title: Text(
+              e.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            subtitle: Text(
+              '${fmt.format(e.startsAt.toLocal())}'
+              '${e.venue.name.isNotEmpty ? ' • ${e.venue.name}' : ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () => Navigator.of(context).pop(e),
+          );
+        },
       ),
     );
   }

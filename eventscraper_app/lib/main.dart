@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'screens/add_event_screen.dart';
+import 'screens/agenda_screen.dart';
 import 'screens/event_detail.dart';
 import 'screens/home_shell.dart';
 
@@ -12,6 +14,8 @@ void main() {
 final _router = GoRouter(
   routes: [
     GoRoute(path: '/', builder: (_, __) => const HomeShell()),
+    GoRoute(path: '/agenda', builder: (_, __) => const AgendaScreen()),
+    GoRoute(path: '/add', builder: (_, __) => const AddEventScreen()),
     GoRoute(
       path: '/event/:id',
       builder: (_, state) =>

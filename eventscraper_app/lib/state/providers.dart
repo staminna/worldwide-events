@@ -69,6 +69,72 @@ final filtersProvider = StateNotifierProvider<FiltersNotifier, Filters>(
   (ref) => FiltersNotifier(),
 );
 
+/// The coming weekend as an inclusive [from, to] range. If today is already
+/// Sat/Sun it uses the current weekend; otherwise the next one. Only the date
+/// parts reach the backend (it filters by day), so the times are cosmetic.
+({DateTime from, DateTime to}) upcomingWeekend([DateTime? now]) {
+  final n = now ?? DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  final sat = today.weekday == DateTime.sunday
+      ? today.subtract(const Duration(days: 1))
+      : today.add(Duration(days: (DateTime.saturday - today.weekday) % 7));
+  return (
+    from: sat,
+    to: sat.add(const Duration(days: 1, hours: 23, minutes: 59, seconds: 59)),
+  );
+}
+
+/// Client-side quick filters layered over the server feed: "free" and "near
+/// me" post-filter the already-loaded events (so they only see the current
+/// pages), while "this weekend" drives the real server-side date range in
+/// [Filters] instead.
+class QuickFilters {
+  final bool freeOnly;
+  final bool nearMe;
+  final bool tonight;
+  final double radiusKm;
+
+  const QuickFilters({
+    this.freeOnly = false,
+    this.nearMe = false,
+    this.tonight = false,
+    this.radiusKm = 10,
+  });
+
+  QuickFilters copyWith({
+    bool? freeOnly,
+    bool? nearMe,
+    bool? tonight,
+    double? radiusKm,
+  }) => QuickFilters(
+    freeOnly: freeOnly ?? this.freeOnly,
+    nearMe: nearMe ?? this.nearMe,
+    tonight: tonight ?? this.tonight,
+    radiusKm: radiusKm ?? this.radiusKm,
+  );
+}
+
+class QuickFiltersNotifier extends StateNotifier<QuickFilters> {
+  QuickFiltersNotifier() : super(const QuickFilters());
+
+  void toggleFree() => state = state.copyWith(freeOnly: !state.freeOnly);
+  void setFree(bool on) => state = state.copyWith(freeOnly: on);
+  void setNearMe(bool on) => state = state.copyWith(nearMe: on);
+  void toggleTonight() => state = state.copyWith(tonight: !state.tonight);
+  void setTonight(bool on) => state = state.copyWith(tonight: on);
+  void setRadius(double km) => state = state.copyWith(radiusKm: km);
+}
+
+final quickFiltersProvider =
+    StateNotifierProvider<QuickFiltersNotifier, QuickFilters>(
+      (ref) => QuickFiltersNotifier(),
+    );
+
+/// Whether the map is in immersive fullscreen (bottom nav + top bar hidden).
+/// Shared so both HomeShell (hides the NavigationBar) and MapScreen (hides
+/// its overlays) react to the same toggle.
+final mapFullscreenProvider = StateProvider<bool>((ref) => false);
+
 /// Accumulated, paged view over /events for the current filters.
 class EventFeed {
   final List<Event> events;
