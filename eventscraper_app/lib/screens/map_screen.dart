@@ -577,76 +577,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ) {
     if (!mounted) return;
     if (layerId == 'clusters' || layerId == 'cluster-count') {
-      _showClusterSheet(point, latLng);
+      // Zoom in to break the cluster apart. The spread fix means co-located
+      // events separate into individual, tappable pins as you zoom.
+      final c = _controller;
+      if (c == null) return;
+      final zoom = c.cameraPosition?.zoom ?? _heatToPinsZoom;
+      c.animateCamera(
+        CameraUpdate.newLatLngZoom(latLng, math.min(zoom + 2.5, 18)),
+      );
       return;
     }
     if (layerId != 'event-dots') return;
     final idx = int.tryParse(id);
     if (idx == null || idx < 0 || idx >= _placed.length) return;
     _select(_placed[idx], _placedPoints[idx]);
-  }
-
-  /// Cluster tap: list the events under the tapped cluster in a bottom sheet.
-  /// MapLibre's plugin doesn't expose cluster leaves, so we approximate the
-  /// cluster footprint by converting its ~50px radius to meters and collecting
-  /// the placed events that fall inside it (nearest first).
-  Future<void> _showClusterSheet(
-    math.Point<double> point,
-    LatLng center,
-  ) async {
-    final c = _controller;
-    if (c == null) return;
-
-    double radiusMeters = 0;
-    try {
-      final edge = await c.toLatLng(math.Point(point.x + 55, point.y));
-      radiusMeters = haversineMeters(
-        center.latitude,
-        center.longitude,
-        edge.latitude,
-        edge.longitude,
-      );
-    } catch (_) {
-      // toLatLng can fail mid-gesture; the nearest-N fallback covers it.
-    }
-
-    final scored = [
-      for (var i = 0; i < _placed.length; i++)
-        (
-          _placed[i],
-          haversineMeters(
-            center.latitude,
-            center.longitude,
-            _placedPoints[i].latitude,
-            _placedPoints[i].longitude,
-          ),
-        ),
-    ]..sort((a, b) => a.$2.compareTo(b.$2));
-
-    var members = radiusMeters > 0
-        ? [
-            for (final s in scored)
-              if (s.$2 <= radiusMeters) s.$1,
-          ]
-        : <Event>[];
-    if (members.isEmpty) members = [for (final s in scored.take(12)) s.$1];
-    if (members.length > 60) members = members.sublist(0, 60);
-
-    if (!mounted || members.isEmpty) return;
-    final chosen = await showModalBottomSheet<Event>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (_) => _ClusterSheet(events: members),
-    );
-    if (chosen != null) _selectAndFly(chosen);
-  }
-
-  /// Selects an event chosen from the cluster sheet and eases the camera to it.
-  void _selectAndFly(Event e) {
-    final point = _pointFor(e);
-    _select(e, point);
-    _controller?.animateCamera(CameraUpdate.newLatLngZoom(point, 15));
   }
 
   void _select(Event e, [LatLng? at]) {
@@ -853,87 +797,6 @@ class _SelectedEventCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Bottom-sheet list of the events under a tapped map cluster. Returns the
-/// chosen event via `Navigator.pop` so the map can select and fly to it.
-class _ClusterSheet extends StatelessWidget {
-  const _ClusterSheet({required this.events});
-
-  final List<Event> events;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final fmt = DateFormat.MMMEd().add_jm();
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.5,
-      minChildSize: 0.3,
-      maxChildSize: 0.9,
-      builder: (context, controller) => ListView.separated(
-        controller: controller,
-        padding: EdgeInsets.fromLTRB(
-          16,
-          0,
-          16,
-          16 + MediaQuery.viewPaddingOf(context).bottom,
-        ),
-        itemCount: events.length + 1,
-        separatorBuilder: (_, i) =>
-            i == 0 ? const SizedBox.shrink() : const Divider(height: 1),
-        itemBuilder: (context, i) {
-          if (i == 0) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                '${events.length} events here',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            );
-          }
-          final e = events[i - 1];
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
-                width: 52,
-                height: 52,
-                child: e.imageUrl.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: proxiedImage(e.imageUrl),
-                        fit: BoxFit.cover,
-                        memCacheWidth: 120,
-                        errorWidget: (_, _, _) =>
-                            Container(color: cs.surfaceContainerHighest),
-                        placeholder: (_, _) =>
-                            Container(color: cs.surfaceContainerHighest),
-                      )
-                    : Container(
-                        color: cs.surfaceContainerHighest,
-                        child: Icon(Icons.event, size: 20, color: cs.outline),
-                      ),
-              ),
-            ),
-            title: Text(
-              e.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-            subtitle: Text(
-              '${fmt.format(e.startsAt.toLocal())}'
-              '${e.venue.name.isNotEmpty ? ' • ${e.venue.name}' : ''}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            onTap: () => Navigator.of(context).pop(e),
-          );
-        },
       ),
     );
   }

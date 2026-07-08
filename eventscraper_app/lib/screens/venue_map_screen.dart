@@ -32,6 +32,20 @@ class VenueMapScreen extends StatefulWidget {
 class _VenueMapScreenState extends State<VenueMapScreen> {
   MapLibreMapController? _controller;
 
+  // Build the map only after the push transition settles. Creating a MapLibre
+  // platform view mid-transition makes it latch a wrong (partial) surface
+  // size and render as a thin strip — this defers it to full screen size.
+  bool _showMap = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      if (mounted) setState(() => _showMap = true);
+    });
+  }
+
   Future<void> _onStyleLoaded() async {
     final c = _controller;
     if (c == null || !mounted) return;
@@ -81,20 +95,29 @@ class _VenueMapScreenState extends State<VenueMapScreen> {
         widget.event.venue.lat != 0 &&
         widget.event.venue.lon != 0;
     return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: MapLibreMap(
-              styleString: mapStyleUrl,
-              initialCameraPosition: CameraPosition(
-                target: widget.center,
-                zoom: isVenueLevel ? 15.5 : 11.5,
-              ),
-              minMaxZoomPreference: const MinMaxZoomPreference(2, 19),
-              compassEnabled: false,
-              onMapCreated: (c) => _controller = c,
-              onStyleLoadedCallback: _onStyleLoaded,
-            ),
+      // SizedBox.expand forces the Stack to fill the screen — the Scaffold
+      // body passes loose constraints, so a bare Stack would otherwise shrink
+      // to its small non-positioned child and the map would render as a strip.
+      body: SizedBox.expand(
+        child: Stack(
+          children: [
+            Positioned.fill(
+            child: _showMap
+                ? MapLibreMap(
+                    styleString: mapStyleUrl,
+                    initialCameraPosition: CameraPosition(
+                      target: widget.center,
+                      zoom: isVenueLevel ? 15.5 : 11.5,
+                    ),
+                    minMaxZoomPreference: const MinMaxZoomPreference(2, 19),
+                    compassEnabled: false,
+                    onMapCreated: (c) => _controller = c,
+                    onStyleLoadedCallback: _onStyleLoaded,
+                  )
+                : ColoredBox(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
           ),
           SafeArea(
             child: Padding(
@@ -162,7 +185,8 @@ class _VenueMapScreenState extends State<VenueMapScreen> {
                 ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -395,7 +395,7 @@ class _IconRow extends StatelessWidget {
 
 /// A static, non-interactive map preview with a teardrop pin on the venue.
 /// Tapping anywhere opens the full-screen interactive [VenueMapScreen].
-class _DetailMap extends StatelessWidget {
+class _DetailMap extends StatefulWidget {
   const _DetailMap({
     required this.center,
     required this.zoom,
@@ -408,13 +408,28 @@ class _DetailMap extends StatelessWidget {
   final Event event;
   final String? label;
 
-  void _openFullscreen(BuildContext context) {
-    Navigator.of(context).push(
+  @override
+  State<_DetailMap> createState() => _DetailMapState();
+}
+
+class _DetailMapState extends State<_DetailMap> {
+  // While the full-screen map is open we drop this preview's live map: two
+  // simultaneous MapLibre GL surfaces corrupt each other's sizing (the second
+  // renders as a thin strip). One map on screen at a time.
+  bool _expanded = false;
+
+  Future<void> _openFullscreen() async {
+    setState(() => _expanded = true);
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            VenueMapScreen(event: event, center: center, approxLabel: label),
+        builder: (_) => VenueMapScreen(
+          event: widget.event,
+          center: widget.center,
+          approxLabel: widget.label,
+        ),
       ),
     );
+    if (mounted) setState(() => _expanded = false);
   }
 
   @override
@@ -427,20 +442,22 @@ class _DetailMap extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: MapLibreMap(
-                styleString: mapStyleUrl,
-                initialCameraPosition: CameraPosition(
-                  target: center,
-                  zoom: zoom,
-                ),
-                // Static preview — the full-screen map handles interaction.
-                scrollGesturesEnabled: false,
-                zoomGesturesEnabled: false,
-                rotateGesturesEnabled: false,
-                tiltGesturesEnabled: false,
-                dragEnabled: false,
-                compassEnabled: false,
-              ),
+              child: _expanded
+                  ? Container(color: cs.surfaceContainerHighest)
+                  : MapLibreMap(
+                      styleString: mapStyleUrl,
+                      initialCameraPosition: CameraPosition(
+                        target: widget.center,
+                        zoom: widget.zoom,
+                      ),
+                      // Static preview — the full-screen map handles interaction.
+                      scrollGesturesEnabled: false,
+                      zoomGesturesEnabled: false,
+                      rotateGesturesEnabled: false,
+                      tiltGesturesEnabled: false,
+                      dragEnabled: false,
+                      compassEnabled: false,
+                    ),
             ),
             // Teardrop pin, tip anchored on the venue at map centre.
             IgnorePointer(
@@ -450,7 +467,7 @@ class _DetailMap extends StatelessWidget {
                   child: Icon(
                     Icons.location_on,
                     size: 46,
-                    color: categoryColor(cs, event.category),
+                    color: categoryColor(cs, widget.event.category),
                     shadows: const [
                       Shadow(
                         color: Colors.black54,
@@ -462,13 +479,13 @@ class _DetailMap extends StatelessWidget {
                 ),
               ),
             ),
-            if (label != null)
+            if (widget.label != null)
               Positioned(
                 left: 12,
                 top: 12,
                 child: _MapChip(
                   icon: Icons.location_city,
-                  text: 'Approximate • $label',
+                  text: 'Approximate • ${widget.label}',
                 ),
               ),
             const Positioned(
@@ -480,7 +497,7 @@ class _DetailMap extends StatelessWidget {
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _openFullscreen(context),
+                onTap: _expanded ? null : _openFullscreen,
               ),
             ),
           ],
