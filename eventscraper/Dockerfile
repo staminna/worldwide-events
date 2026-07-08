@@ -19,6 +19,7 @@ COPY configs/cities.yaml /app/configs/cities.yaml
 USER app
 ENV PORT=8080 \
     DB_PATH=/data/eventscraper.db \
+    UPLOAD_DIR=/data/uploads \
     CITIES_PATH=/app/configs/cities.yaml
 EXPOSE 8080
 VOLUME /data
