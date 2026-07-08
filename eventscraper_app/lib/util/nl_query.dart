@@ -126,31 +126,40 @@ ParsedQuery parseQuery(String raw, List<City> cities) {
   var text = ' ${raw.toLowerCase().trim()} ';
   if (text.trim().isEmpty) return const ParsedQuery();
 
-  String consume(String phrase) {
+  // Removes every whole-word occurrence of [phrase]. Loops because adjacent
+  // repeats share their boundary space, which a single replaceAll pass
+  // cannot match ("free free free" would otherwise leave one behind).
+  bool consume(String phrase) {
     final p = ' $phrase ';
-    if (text.contains(p)) {
-      text = text.replaceAll(p, '  ');
-      return phrase;
+    var found = false;
+    while (text.contains(p)) {
+      text = text.replaceAll(p, ' ');
+      found = true;
     }
-    return '';
+    return found;
   }
 
-  final free = _freeWords.map(consume).any((m) => m.isNotEmpty);
-  final nearMe = _nearWords.map(consume).any((m) => m.isNotEmpty);
+  // Eager: every phrase is consumed, not just the first hit — otherwise a
+  // query like "free grátis" would leak the synonym into the residual.
+  bool consumeAny(List<String> phrases) {
+    var any = false;
+    for (final p in phrases) {
+      if (consume(p)) any = true;
+    }
+    return any;
+  }
 
-  final weekend =
-      consume('this weekend').isNotEmpty ||
-      consume('weekend').isNotEmpty ||
-      consume('fim de semana').isNotEmpty;
-  final tonight =
-      consume('tonight').isNotEmpty ||
-      consume('today').isNotEmpty ||
-      consume('hoje').isNotEmpty;
+  final free = consumeAny(_freeWords);
+  final nearMe = consumeAny(_nearWords);
+
+  // Longest phrase first, so "weekend" doesn't strand a leading "this".
+  final weekend = consumeAny(['this weekend', 'fim de semana', 'weekend']);
+  final tonight = consumeAny(['tonight', 'today', 'hoje']);
 
   EventCategory? category;
   for (final entry in _categoryKeywords.entries) {
     for (final kw in entry.value) {
-      if (consume(kw).isNotEmpty) {
+      if (consume(kw)) {
         category ??= entry.key;
       }
     }
