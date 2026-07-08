@@ -135,6 +135,14 @@ final quickFiltersProvider =
 /// its overlays) react to the same toggle.
 final mapFullscreenProvider = StateProvider<bool>((ref) => false);
 
+/// The map's own event catalog: unfiltered by the feed's city/category/search
+/// so the map always shows everything, wherever the user pans. Fetched once
+/// per map session (autoDispose drops it when the map tab is torn down).
+final mapEventsProvider = FutureProvider.autoDispose<List<Event>>((ref) async {
+  final list = await ref.read(apiProvider).fetchEvents(limit: 500);
+  return list.events;
+});
+
 /// Accumulated, paged view over /events for the current filters.
 class EventFeed {
   final List<Event> events;

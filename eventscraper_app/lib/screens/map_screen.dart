@@ -41,8 +41,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   // Display coordinates parallel to _placed: events sharing a coordinate (a
   // city centroid) are fanned out into a ring so each is visible/tappable.
   List<LatLng> _placedPoints = const [];
-  // Identity of the feed.events list we last derived _placed from, so rebuilds
-  // triggered by camera/GPS/fullscreen ticks don't re-scan the whole feed.
+  // Identity of the catalog list we last derived _placed from, so rebuilds
+  // triggered by camera/GPS/fullscreen ticks don't re-scan every event.
   List<Event>? _lastSyncedEvents;
 
   @override
@@ -90,23 +90,25 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final feed = ref.watch(eventFeedProvider);
+    // The map deliberately ignores the feed's filters: it fetches its own
+    // unfiltered catalog so panning anywhere shows what's there.
+    final mapEvents = ref.watch(mapEventsProvider);
     final loc = ref.watch(locationProvider);
     final fullscreen = ref.watch(mapFullscreenProvider);
     ref.listen(locationProvider, (_, next) => _syncMySource(next));
 
-    if (feed.loading && feed.events.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+    final events = mapEvents.valueOrNull;
+    if (events == null) {
+      return mapEvents.hasError
+          ? Center(child: Text('Error: ${mapEvents.error}'))
+          : const Center(child: CircularProgressIndicator());
     }
-    if (feed.error != null && feed.events.isEmpty) {
-      return Center(child: Text('Error: ${feed.error}'));
-    }
-    // Only re-derive placed events (and re-push the map sources) when the feed
-    // instance actually changes — build() runs on every camera move, GPS fix,
-    // and fullscreen toggle, and the old code re-scanned every event each time.
-    if (!identical(feed.events, _lastSyncedEvents)) {
-      _lastSyncedEvents = feed.events;
-      _placed = feed.events
+    // Only re-derive placed events (and re-push the map sources) when the
+    // catalog instance actually changes — build() runs on every camera move,
+    // GPS fix, and fullscreen toggle.
+    if (!identical(events, _lastSyncedEvents)) {
+      _lastSyncedEvents = events;
+      _placed = events
           .where((e) => e.venue.lat != 0 && e.venue.lon != 0)
           .toList();
       _placedPoints = _spread(_placed);
@@ -190,7 +192,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     const SizedBox(height: 8),
                     _MapTopBar(
                       count: _placed.length,
-                      total: feed.events.length,
+                      total: events.length,
                     ),
                   ],
                 ),
@@ -463,6 +465,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _styleReady = true;
     _syncEventSources();
     _syncMySource(ref.read(locationProvider));
+    _autoCenter();
+  }
+
+  // One-shot auto-geolocate when the map first loads: centre on the user at
+  // a zoom that shows individual pins. Best-effort — no permission, no fix,
+  // or web keeps the initial events overview instead.
+  bool _autoCentered = false;
+  Future<void> _autoCenter() async {
+    if (_autoCentered) return;
+    _autoCentered = true;
+    try {
+      if (!ref.read(locationProvider).hasFix) {
+        await ref.read(locationProvider.notifier).refreshFix();
+      }
+      final loc = ref.read(locationProvider);
+      if (!mounted || !loc.hasFix) return;
+      await _controller?.animateCamera(
+        CameraUpdate.newLatLngZoom(LatLng(loc.lat!, loc.lon!), 11),
+      );
+    } catch (_) {
+      // Stay on the events overview.
+    }
   }
 
   /// `['match', category, <name>, <hex>, ..., fallback]` built from the enum

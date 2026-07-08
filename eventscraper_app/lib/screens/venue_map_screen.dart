@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 import '../models/event.dart';
@@ -161,30 +162,62 @@ class _VenueMapScreenState extends State<VenueMapScreen> {
               ),
             ),
           ),
-          if (isVenueLevel)
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 12,
-              child: SafeArea(
-                top: false,
-                child: Material(
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(16),
-                  color: Theme.of(context).colorScheme.surface,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: DirectionsButtons(
-                      lat: widget.event.venue.lat,
-                      lon: widget.event.venue.lon,
-                      label: widget.event.venue.name.isEmpty
-                          ? widget.event.title
-                          : widget.event.venue.name,
-                    ),
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: SafeArea(
+              top: false,
+              child: Material(
+                elevation: 4,
+                borderRadius: BorderRadius.circular(16),
+                color: Theme.of(context).colorScheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // The pin's event, so the map is self-explanatory.
+                      Text(
+                        widget.event.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          categoryLabel(widget.event.category),
+                          DateFormat.MMMEd().add_jm().format(
+                            widget.event.startsAt.toLocal(),
+                          ),
+                          if (widget.event.venue.name.isNotEmpty)
+                            widget.event.venue.name,
+                        ].join(' • '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (isVenueLevel) ...[
+                        const SizedBox(height: 10),
+                        DirectionsButtons(
+                          lat: widget.event.venue.lat,
+                          lon: widget.event.venue.lon,
+                          label: widget.event.venue.name.isEmpty
+                              ? widget.event.title
+                              : widget.event.venue.name,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
             ),
+          ),
           ],
         ),
       ),

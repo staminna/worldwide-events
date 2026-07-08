@@ -222,6 +222,24 @@ class EventApi {
     return Event.fromJson(body['data'] as Map<String, dynamic>);
   }
 
+  /// Uploads a cover image (POST /upload, multipart field "file") and returns
+  /// its absolute URL. The backend answers with a relative `/uploads/...`
+  /// path so the URL works behind any reverse-proxy prefix — we absolutize it
+  /// against this client's own base.
+  Future<String> uploadImage(List<int> bytes, String filename) async {
+    final res = await _dio.post(
+      '/upload',
+      data: FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: filename),
+      }),
+    );
+    final body = res.data as Map<String, dynamic>;
+    final url = (body['data'] as Map<String, dynamic>)['url'] as String;
+    if (url.startsWith('http')) return url;
+    final base = _dio.options.baseUrl;
+    return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}$url';
+  }
+
   /// Forward-geocodes a free-text query to candidate places (backend proxies
   /// and rate-limits Nominatim). Returns an empty list on any failure —
   /// callers treat it as "no matches".

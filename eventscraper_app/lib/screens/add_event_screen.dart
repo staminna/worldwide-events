@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../models/event.dart';
@@ -25,6 +28,33 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
   DateTime? _startsAt;
   LocationResult? _location;
   bool _submitting = false;
+
+  // A locally-picked cover image; uploaded on submit and takes precedence
+  // over anything typed in the URL field.
+  XFile? _pickedImage;
+  Uint8List? _pickedBytes;
+
+  Future<void> _pickImage() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _pickedImage = picked;
+        _pickedBytes = bytes;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not pick image: $e')));
+    }
+  }
 
   @override
   void initState() {
@@ -106,6 +136,14 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
     }
     setState(() => _submitting = true);
     try {
+      // An attached file wins over the URL field; upload it first so the
+      // event is created already pointing at the stored copy.
+      var imageUrl = _imageController.text.trim();
+      if (_pickedBytes != null) {
+        imageUrl = await ref
+            .read(apiProvider)
+            .uploadImage(_pickedBytes!, _pickedImage!.name);
+      }
       await ref
           .read(apiProvider)
           .createEvent(
@@ -118,7 +156,7 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
             address: _location?.displayName ?? '',
             lat: _location?.lat,
             lon: _location?.lon,
-            imageUrl: _imageController.text.trim(),
+            imageUrl: imageUrl,
           );
       // Surface the new event immediately, and drop the city filter onto the
       // event's city so it's guaranteed to show up in the feed.
@@ -249,13 +287,57 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
               ),
             ),
           const SizedBox(height: 16),
+          Text('Cover image', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          if (_pickedBytes != null)
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(
+                    _pickedBytes!,
+                    height: 160,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Material(
+                    color: Colors.black54,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Remove image',
+                      color: Colors.white,
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () => setState(() {
+                        _pickedImage = null;
+                        _pickedBytes = null;
+                      }),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            OutlinedButton.icon(
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: const Text('Attach image from gallery'),
+              onPressed: _pickImage,
+            ),
+          const SizedBox(height: 8),
           TextField(
             controller: _imageController,
             keyboardType: TextInputType.url,
-            decoration: const InputDecoration(
+            enabled: _pickedBytes == null,
+            decoration: InputDecoration(
               labelText: 'Image URL (optional)',
-              helperText: 'Adds a cover image to the event card',
-              border: OutlineInputBorder(),
+              helperText: _pickedBytes == null
+                  ? 'Or paste an image link instead'
+                  : 'Attached file will be used',
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 16),
