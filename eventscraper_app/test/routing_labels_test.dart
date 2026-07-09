@@ -32,6 +32,40 @@ void main() {
     });
   });
 
+  group('RouteStep.instruction', () {
+    RouteStep step(String type, String modifier, String name) => RouteStep(
+      distanceMeters: 100,
+      name: name,
+      maneuverType: type,
+      maneuverModifier: modifier,
+      lat: 0,
+      lon: 0,
+    );
+
+    test('turn with modifier and street name', () {
+      expect(step('turn', 'left', 'Rua X').instruction, 'Turn left onto Rua X');
+    });
+
+    test('slight turns keep the OSRM modifier wording', () {
+      expect(step('turn', 'slight right', '').instruction, 'Turn slight right');
+    });
+
+    test('arrive and depart', () {
+      expect(step('arrive', '', '').instruction, 'You have arrived');
+      expect(step('depart', '', 'Rua Y').instruction, 'Head out on Rua Y');
+    });
+
+    test('straight and unnamed default to continue', () {
+      expect(step('continue', 'straight', '').instruction, 'Continue');
+      expect(step('turn', 'straight', 'Rua Z').instruction, 'Continue on Rua Z');
+    });
+
+    test('WalkRoute without steps still constructs const with empty steps', () {
+      const r = WalkRoute(distanceMeters: 1, durationSeconds: 1, geometry: {});
+      expect(r.steps, isEmpty);
+    });
+  });
+
   group('WalkTour.totalLabel', () {
     test('multi-stop totals format like the single-leg label', () {
       const t = WalkTour(

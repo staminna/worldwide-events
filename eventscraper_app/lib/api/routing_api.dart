@@ -1,11 +1,62 @@
 import 'package:dio/dio.dart';
 
+/// One OSRM maneuver along a walking route — where to turn and what to say.
+class RouteStep {
+  const RouteStep({
+    required this.distanceMeters,
+    required this.name,
+    required this.maneuverType,
+    required this.maneuverModifier,
+    required this.lat,
+    required this.lon,
+  });
+
+  /// Length of the road segment that follows this maneuver.
+  final double distanceMeters;
+
+  /// Street name after the maneuver; may be empty.
+  final String name;
+
+  /// OSRM maneuver type: 'depart', 'turn', 'arrive', 'continue', ...
+  final String maneuverType;
+
+  /// OSRM modifier: 'left', 'right', 'slight left', 'straight', ...; may be
+  /// empty (e.g. for 'depart'/'arrive').
+  final String maneuverModifier;
+
+  /// Maneuver location.
+  final double lat;
+  final double lon;
+
+  /// Human instruction: "Turn left onto Rua X", "You have arrived", ...
+  String get instruction {
+    final onto = name.isEmpty ? '' : ' onto $name';
+    final on = name.isEmpty ? '' : ' on $name';
+    switch (maneuverType) {
+      case 'arrive':
+        return 'You have arrived';
+      case 'depart':
+        return 'Head out$on';
+      case 'continue':
+      case 'new name':
+        return 'Continue$on';
+      default:
+        if (maneuverModifier.isEmpty || maneuverModifier == 'straight') {
+          return 'Continue$on';
+        }
+        if (maneuverModifier == 'uturn') return 'Make a U-turn';
+        return 'Turn $maneuverModifier$onto';
+    }
+  }
+}
+
 /// A pedestrian route between two points from the public OSRM foot profile.
 class WalkRoute {
   const WalkRoute({
     required this.distanceMeters,
     required this.durationSeconds,
     required this.geometry,
+    this.steps = const [],
   });
 
   final double distanceMeters;
@@ -14,6 +65,9 @@ class WalkRoute {
   /// GeoJSON LineString geometry ([lon, lat] pairs), ready to feed straight
   /// into a map source.
   final Map<String, dynamic> geometry;
+
+  /// Turn-by-turn maneuvers in route order; empty when OSRM sent none.
+  final List<RouteStep> steps;
 
   String get walkLabel {
     final mins = (durationSeconds / 60).round();
@@ -74,17 +128,35 @@ Future<WalkRoute?> fetchWalkingRoute({
     final res = await _dio.get<Map<String, dynamic>>(
       'https://routing.openstreetmap.de/routed-foot/route/v1/foot/'
       '$fromLon,$fromLat;$toLon,$toLat',
-      queryParameters: {'overview': 'full', 'geometries': 'geojson'},
+      queryParameters: {
+        'overview': 'full',
+        'geometries': 'geojson',
+        'steps': 'true',
+      },
     );
     final data = res.data;
     if (data == null || data['code'] != 'Ok') return null;
     final routes = data['routes'] as List?;
     if (routes == null || routes.isEmpty) return null;
     final route = routes.first as Map<String, dynamic>;
+    final steps = <RouteStep>[
+      for (final leg in (route['legs'] as List? ?? const []))
+        for (final s in ((leg as Map)['steps'] as List? ?? const []))
+          RouteStep(
+            distanceMeters: ((s as Map)['distance'] as num).toDouble(),
+            name: (s['name'] as String?) ?? '',
+            maneuverType:
+                ((s['maneuver'] as Map)['type'] as String?) ?? '',
+            maneuverModifier: (s['maneuver']['modifier'] as String?) ?? '',
+            lon: ((s['maneuver']['location'] as List)[0] as num).toDouble(),
+            lat: ((s['maneuver']['location'] as List)[1] as num).toDouble(),
+          ),
+    ];
     return WalkRoute(
       distanceMeters: (route['distance'] as num).toDouble(),
       durationSeconds: (route['duration'] as num).toDouble(),
       geometry: (route['geometry'] as Map).cast<String, dynamic>(),
+      steps: steps,
     );
   } catch (_) {
     return null;
