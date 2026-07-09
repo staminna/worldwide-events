@@ -143,7 +143,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final feed = ref.watch(eventFeedProvider);
+    // The feed's first fetch waits for the startup city resolution —
+    // watching eventFeedProvider any earlier would fire a throwaway global
+    // fetch that flashes on screen before the located city's feed replaces
+    // it. Until the gate opens, an inert default (loading, empty) renders
+    // the same spinner the real first load shows, so it reads as one load.
+    final cityResolved = ref.watch(initialCityResolvedProvider);
+    final feed = cityResolved
+        ? ref.watch(eventFeedProvider)
+        : const EventFeed();
     final filters = ref.watch(filtersProvider);
 
     if (!feed.loading && feed.error == null && feed.events.isEmpty) {

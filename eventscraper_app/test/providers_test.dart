@@ -1,9 +1,37 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:eventscraper_app/models/event.dart';
 import 'package:eventscraper_app/state/providers.dart';
 
 void main() {
+  group('FiltersNotifier city persistence', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    test('setCity remembers the city for the next launch', () async {
+      FiltersNotifier().setCity('lisbon');
+      await Future<void>.delayed(Duration.zero); // flush the async write
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(lastCityPrefKey), 'lisbon');
+    });
+
+    test('setCity(null) and clear() both forget the saved city', () async {
+      final n = FiltersNotifier();
+      n.setCity('porto');
+      await Future<void>.delayed(Duration.zero);
+      n.setCity(null);
+      await Future<void>.delayed(Duration.zero);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(lastCityPrefKey), isNull);
+
+      n.setCity('porto');
+      await Future<void>.delayed(Duration.zero);
+      n.clear();
+      await Future<void>.delayed(Duration.zero);
+      expect(prefs.getString(lastCityPrefKey), isNull);
+    });
+  });
+
   group('upcomingWeekend', () {
     test('midweek picks the coming Saturday', () {
       final w = upcomingWeekend(DateTime(2026, 7, 8)); // Wednesday

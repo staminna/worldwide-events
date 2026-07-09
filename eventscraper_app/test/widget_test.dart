@@ -1,5 +1,7 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:eventscraper_app/api/event_api.dart';
 import 'package:eventscraper_app/main.dart';
@@ -60,13 +62,20 @@ class _FakeApi extends EventApi {
 
 void main() {
   testWidgets('app boots and shows the event feed', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    // Fail geolocator fast (unmocked channel futures never complete, which
+    // would keep the feed's startup gate waiting forever).
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('flutter.baseflow.com/geolocator'),
+      (_) async => throw MissingPluginException(),
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [apiProvider.overrideWithValue(_FakeApi())],
         child: const EventScraperApp(),
       ),
     );
-    await tester.pump(); // first frame
+    await tester.pump(); // startup gate opens; feed starts fetching
     await tester.pump(); // feed future resolves
 
     // Home shell navigation.

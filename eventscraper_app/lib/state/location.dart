@@ -36,9 +36,14 @@ class LocationNotifier extends StateNotifier<LocationState> {
   /// that already has that many located events). Keeps the fix in state
   /// (for the map's position dot) and returns the match. Throws
   /// [LocationException] with a user-facing message when the position is
-  /// unavailable.
-  Future<NearestCity> locate({int? minEvents}) async {
-    final pos = await _track(_devicePosition);
+  /// unavailable. [fixTimeout] bounds the fresh-fix attempt; after it the
+  /// last known position is used when available (callers that themselves
+  /// wait on the result — like the startup feed gate — pass a short one).
+  Future<NearestCity> locate({
+    int? minEvents,
+    Duration fixTimeout = const Duration(seconds: 15),
+  }) async {
+    final pos = await _track(() => _devicePosition(timeLimit: fixTimeout));
     final nearest = await _track(
       () => _api.reverseGeocode(
         pos.latitude,
@@ -86,7 +91,9 @@ class LocationNotifier extends StateNotifier<LocationState> {
     }
   }
 
-  Future<Position> _devicePosition() async {
+  Future<Position> _devicePosition({
+    Duration timeLimit = const Duration(seconds: 15),
+  }) async {
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw const LocationException(
         'Location services are turned off on this device.',
@@ -108,9 +115,9 @@ class LocationNotifier extends StateNotifier<LocationState> {
       // City-level accuracy is all the feed needs; low keeps the fix fast
       // and battery-cheap.
       return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
+        locationSettings: LocationSettings(
           accuracy: LocationAccuracy.low,
-          timeLimit: Duration(seconds: 15),
+          timeLimit: timeLimit,
         ),
       );
     } on LocationException {

@@ -1,7 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/event_api.dart';
 import '../models/event.dart';
+
+/// SharedPreferences key remembering the last city the feed was set to, so
+/// the next launch can seed the feed instantly instead of waiting on a
+/// locate round-trip.
+const lastCityPrefKey = 'last_city_id';
+
+/// Startup gate for the feed: false until the initial city is resolved
+/// (persisted city applied, locate finished, or locate failed). HomeScreen
+/// doesn't watch [eventFeedProvider] until this is true, so the feed's first
+/// fetch happens exactly once, with the right city — no global-feed flash.
+final initialCityResolvedProvider = StateProvider<bool>((_) => false);
 
 final apiProvider = Provider<EventApi>((ref) => EventApi());
 
@@ -56,13 +68,33 @@ class Filters {
 class FiltersNotifier extends StateNotifier<Filters> {
   FiltersNotifier() : super(const Filters());
 
-  void setCity(String? id) => state = state.copyWith(cityId: id);
+  void setCity(String? id) {
+    state = state.copyWith(cityId: id);
+    _persistCity(id);
+  }
+
   void setCategory(EventCategory? c) => state = state.copyWith(category: c);
   void setSource(EventSource? s) => state = state.copyWith(source: s);
   void setRange(DateTime? from, DateTime? to) =>
       state = state.copyWith(from: from, to: to);
   void setSearch(String q) => state = state.copyWith(search: q);
-  void clear() => state = const Filters();
+
+  void clear() {
+    state = const Filters();
+    _persistCity(null);
+  }
+
+  /// Fire-and-forget: a missed write just costs one locate on next launch.
+  static Future<void> _persistCity(String? id) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (id == null) {
+        await prefs.remove(lastCityPrefKey);
+      } else {
+        await prefs.setString(lastCityPrefKey, id);
+      }
+    } catch (_) {}
+  }
 }
 
 final filtersProvider = StateNotifierProvider<FiltersNotifier, Filters>(

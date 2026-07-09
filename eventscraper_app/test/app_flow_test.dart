@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -87,13 +88,20 @@ class _FakeApi extends EventApi {
 }
 
 Future<void> _boot(WidgetTester tester) async {
+  // Unmocked, the geolocator channel's futures never complete, which would
+  // keep _autoLocate (and the feed's startup gate) waiting forever. Failing
+  // fast is what a device without permission does.
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    const MethodChannel('flutter.baseflow.com/geolocator'),
+    (_) async => throw MissingPluginException(),
+  );
   await tester.pumpWidget(
     ProviderScope(
       overrides: [apiProvider.overrideWithValue(_FakeApi())],
       child: const EventScraperApp(),
     ),
   );
-  await tester.pump(); // first frame
+  await tester.pump(); // startup gate opens; feed starts fetching
   await tester.pump(); // feed future resolves
 }
 

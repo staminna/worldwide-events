@@ -62,28 +62,49 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   /// One-shot automatic "near me" on app launch: if we can know where the
   /// user is, open the feed on the nearest city that actually has events.
-  /// Deliberately silent on every failure — no permission, no fix, backend
-  /// down, plugins missing in tests — the app just stays on the global feed.
+  /// The feed's first fetch waits behind [initialCityResolvedProvider], so
+  /// it fires exactly once with the resolved city: the city persisted from
+  /// the last launch opens the gate immediately, otherwise the locate
+  /// attempt (bounded, with a last-known-position fallback inside
+  /// [LocationNotifier]) does. Deliberately silent on every failure — no
+  /// permission, no fix, backend down, plugins missing in tests — the app
+  /// just stays on the saved or global feed.
   Future<void> _autoLocate() async {
+    String? saved;
     try {
       if (ref.read(filtersProvider).cityId != null) return;
+
+      // Seed from the previous launch so the first (only) feed fetch already
+      // has the right city; the locate below just corrects a real move.
+      final prefs = await SharedPreferences.getInstance();
+      saved = prefs.getString(lastCityPrefKey);
+      if (saved != null) {
+        ref.read(filtersProvider.notifier).setCity(saved);
+        _openFeedGate();
+      }
 
       final perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.deniedForever) return;
       if (perm == LocationPermission.denied) {
         // Ask exactly once, on first launch. After that the button in the
         // app bar is the opt-in path — no nagging on every start.
-        final prefs = await SharedPreferences.getInstance();
         if (prefs.getBool(_promptedPrefKey) ?? false) return;
         await prefs.setBool(_promptedPrefKey, true);
       }
 
+      // Short fix timeout so the last-known-position fallback still fits
+      // inside the overall cap the feed may be waiting behind.
       final nearest = await ref
           .read(locationProvider.notifier)
-          .locate(minEvents: 3);
+          .locate(minEvents: 3, fixTimeout: const Duration(seconds: 6))
+          .timeout(const Duration(seconds: 12));
       if (!mounted) return;
-      // The user may have picked a city while we were locating.
-      if (ref.read(filtersProvider).cityId != null) return;
+      final current = ref.read(filtersProvider).cityId;
+      // Already showing the located city — a redundant setCity would still
+      // rebuild the feed, which is exactly the flicker this avoids.
+      if (current == nearest.city.id) return;
+      // The user picked a different city while we were locating.
+      if (current != null && current != saved) return;
       ref.read(filtersProvider.notifier).setCity(nearest.city.id);
       final km = nearest.distanceKm.round();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -98,7 +119,14 @@ class _HomeShellState extends ConsumerState<HomeShell>
       );
     } catch (_) {
       // Auto-locate is best-effort by design.
+    } finally {
+      _openFeedGate();
     }
+  }
+
+  void _openFeedGate() {
+    if (!mounted) return;
+    ref.read(initialCityResolvedProvider.notifier).state = true;
   }
 
   @override
