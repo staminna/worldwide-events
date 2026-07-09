@@ -148,27 +148,6 @@ EventSource sourceFromString(String s) {
   return EventSource.unknown;
 }
 
-String sourceLabel(EventSource s) {
-  switch (s) {
-    case EventSource.eventbrite:
-      return 'Eventbrite';
-    case EventSource.songkick:
-      return 'Songkick';
-    case EventSource.luma:
-      return 'Luma';
-    case EventSource.ticketmaster:
-      return 'Ticketmaster';
-    case EventSource.meetup:
-      return 'Meetup';
-    case EventSource.viralagenda:
-      return 'Viral Agenda';
-    case EventSource.manual:
-      return 'Added by you';
-    case EventSource.unknown:
-      return 'Unknown';
-  }
-}
-
 enum EventCategory { tech, music, arts, business, unknown }
 
 EventCategory categoryFromString(String? s) {

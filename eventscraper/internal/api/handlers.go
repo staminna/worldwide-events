@@ -442,12 +442,12 @@ func parseQuery(r *http.Request, cat *geo.Catalog) (store.Query, *geo.City, erro
 			return q, cityObj, errors.New("invalid from date (YYYY-MM-DD)")
 		}
 		q.From = t
-	} else {
-		// Default: disregard events that already finished. Ongoing events
-		// (multi-day festivals, shows without an end time within the grace
-		// window) stay visible. An explicit ?from= opts into history.
-		q.NotEndedBefore = time.Now().UTC()
 	}
+	// Always disregard events that already finished, even inside an explicit
+	// from/to window (a weekend range on Sunday evening must not resurface
+	// Saturday's gigs). Ongoing events — multi-day festivals, shows without
+	// an end time within the grace window — stay visible.
+	q.NotEndedBefore = time.Now().UTC()
 	if v := values.Get("to"); v != "" {
 		t, err := time.Parse("2006-01-02", v)
 		if err != nil {

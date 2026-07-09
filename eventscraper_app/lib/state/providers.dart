@@ -21,10 +21,6 @@ final citiesProvider = FutureProvider<List<City>>((ref) async {
   return ref.read(apiProvider).fetchCities();
 });
 
-final sourcesProvider = FutureProvider<List<SourceInfo>>((ref) async {
-  return ref.read(apiProvider).fetchSources();
-});
-
 class Filters {
   final String? cityId;
   final EventCategory? category;

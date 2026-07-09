@@ -453,9 +453,13 @@ func TestParseQueryFilters(t *testing.T) {
 	if !q.From.Equal(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("From = %v", q.From)
 	}
-	// An explicit from opts into history: no hide-ended filter.
-	if !q.NotEndedBefore.IsZero() {
-		t.Errorf("NotEndedBefore should be zero with explicit from, got %v", q.NotEndedBefore)
+	// Finished events stay hidden even inside an explicit from/to window
+	// (a weekend range on Sunday evening must not resurface Saturday's gigs).
+	if q.NotEndedBefore.IsZero() {
+		t.Errorf("NotEndedBefore should be set even with explicit from")
+	}
+	if d := time.Since(q.NotEndedBefore); d < 0 || d > time.Minute {
+		t.Errorf("NotEndedBefore not ~now: %v", q.NotEndedBefore)
 	}
 	// `to` is rolled forward by 24h so the day is inclusive.
 	if !q.To.Equal(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)) {

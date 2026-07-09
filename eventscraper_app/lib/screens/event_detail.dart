@@ -324,7 +324,6 @@ class _DetailsPane extends ConsumerWidget {
             spacing: 8,
             runSpacing: 4,
             children: [
-              Chip(label: Text(sourceLabel(event.source))),
               Chip(label: Text(categoryLabel(event.category))),
               if (event.price != null)
                 Chip(

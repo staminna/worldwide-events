@@ -80,13 +80,7 @@ class EventCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        _CategoryChip(category: event.category),
-                        const SizedBox(width: 6),
-                        _SourceChip(source: event.source),
-                      ],
-                    ),
+                    Row(children: [_CategoryChip(category: event.category)]),
                     const SizedBox(height: 10),
                     Text(
                       event.title,
@@ -166,27 +160,6 @@ class _CategoryChip extends StatelessWidget {
           fontWeight: FontWeight.w600,
           fontSize: 11,
         ),
-      ),
-    );
-  }
-}
-
-class _SourceChip extends StatelessWidget {
-  const _SourceChip({required this.source});
-  final EventSource source;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        border: Border.all(color: cs.outlineVariant),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        sourceLabel(source),
-        style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
       ),
     );
   }

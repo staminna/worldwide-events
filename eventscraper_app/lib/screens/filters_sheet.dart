@@ -13,7 +13,6 @@ class FiltersSheet extends ConsumerWidget {
     final filters = ref.watch(filtersProvider);
     final notifier = ref.read(filtersProvider.notifier);
     final citiesAsync = ref.watch(citiesProvider);
-    final sourcesAsync = ref.watch(sourcesProvider);
 
     return DraggableScrollableSheet(
       expand: false,
@@ -106,35 +105,6 @@ class FiltersSheet extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 20),
-          Text('Source', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          sourcesAsync.when(
-            data: (sources) {
-              final enabled = sources
-                  .where((s) => s.configured && s.id != EventSource.unknown)
-                  .map((s) => s.id)
-                  .toList();
-              return Wrap(
-                spacing: 8,
-                children: [
-                  ChoiceChip(
-                    label: const Text('All'),
-                    selected: filters.source == null,
-                    onSelected: (_) => notifier.setSource(null),
-                  ),
-                  for (final s in enabled)
-                    ChoiceChip(
-                      label: Text(sourceLabel(s)),
-                      selected: filters.source == s,
-                      onSelected: (_) => notifier.setSource(s),
-                    ),
-                ],
-              );
-            },
-            loading: () => const LinearProgressIndicator(),
-            error: (e, _) => Text('Failed to load sources: $e'),
-          ),
-          const SizedBox(height: 20),
           Text('Date range', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -175,10 +145,6 @@ class FiltersSheet extends ConsumerWidget {
           _FollowSection(
             selectedCityId: filters.cityId,
             cities: citiesAsync.valueOrNull ?? const [],
-            sources: (sourcesAsync.valueOrNull ?? const [])
-                .where((s) => s.configured && s.id != EventSource.unknown)
-                .map((s) => s.id)
-                .toList(),
           ),
           const SizedBox(height: 24),
           Row(
@@ -208,19 +174,14 @@ class FiltersSheet extends ConsumerWidget {
       : '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
-/// Bell chips that toggle a [Follow] for each category, configured source, and
-/// the currently-selected city. Following surfaces a local notification when
+/// Bell chips that toggle a [Follow] for each category and the
+/// currently-selected city. Following surfaces a local notification when
 /// new matching events are scraped (checked on app open/resume).
 class _FollowSection extends ConsumerWidget {
-  const _FollowSection({
-    required this.selectedCityId,
-    required this.cities,
-    required this.sources,
-  });
+  const _FollowSection({required this.selectedCityId, required this.cities});
 
   final String? selectedCityId;
   final List<City> cities;
-  final List<EventSource> sources;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -259,7 +220,6 @@ class _FollowSection extends ConsumerWidget {
           (c) => c != EventCategory.unknown,
         ))
           bell(FollowType.category, c.name, categoryLabel(c)),
-        for (final s in sources) bell(FollowType.source, s.name, sourceLabel(s)),
         if (selectedCity != null)
           bell(FollowType.city, selectedCity.id, selectedCity.name),
       ],
