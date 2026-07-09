@@ -19,11 +19,16 @@ import (
 // Event objects, which is far more stable than the page markup, so we parse
 // that instead of the HTML.
 type Viralagenda struct {
-	HTTP *http.Client
+	client *StealthClient
 }
 
-func NewViralagenda() *Viralagenda {
-	return &Viralagenda{HTTP: &http.Client{Timeout: 20 * time.Second}}
+// NewViralagenda builds the scraper with the shared stealth client. A nil
+// client (tests) falls back to a plain direct client.
+func NewViralagenda(client *StealthClient) *Viralagenda {
+	if client == nil {
+		client = NewStealthClient(StealthConfig{})
+	}
+	return &Viralagenda{client: client}
 }
 
 func (v *Viralagenda) Source() model.Source { return model.SourceViralagenda }
@@ -56,11 +61,10 @@ func (v *Viralagenda) Scrape(ctx context.Context, city geo.City, cats []model.Ca
 	}
 
 	req, _ := http.NewRequestWithContext(ctx, "GET", viralagendaBaseURL+slug, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; eventscraper/1.0; +https://github.com/jorgenunes/eventscraper)")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 	req.Header.Set("Accept-Language", "pt-PT,pt;q=0.9,en;q=0.8")
 
-	resp, err := v.HTTP.Do(req)
+	resp, err := v.client.Do(req)
 	if err != nil {
 		return nil, err
 	}

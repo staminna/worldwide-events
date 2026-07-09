@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scrape Runs</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #21262d;
+    --text: #e6edf3; --muted: #8b949e;
+    --accent: #4dd0e1; --ok: #3fb950; --warn: #d29922; --err: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  .head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.stale { background: var(--err); }
+  .sub { color: var(--muted); font-size: 12px; }
+
+  .bar-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 18px; }
+  .bar-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+  .bar-label .pct { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .track { height: 10px; background: #0b0f14; border-radius: 6px; overflow: hidden; }
+  .fill { height: 100%; width: 0; background: linear-gradient(90deg, #2a9d8f, var(--accent)); border-radius: 6px; transition: width .4s ease; }
+
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+  .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .tile .n { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .tile.blocked .n { color: var(--warn); }
+  .tile.errors .n { color: var(--err); }
+  .tile.events .n { color: var(--accent); }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 22px 0 8px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 14px; font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
+  tr + tr td { border-top: 1px solid var(--border); }
+  td.num { text-align: right; }
+  .src { font-weight: 600; }
+  .empty { color: var(--muted); padding: 14px; font-style: italic; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .chip.ok { background: rgba(63,185,80,.15); color: var(--ok); }
+  .chip.blocked { background: rgba(210,153,34,.15); color: var(--warn); }
+  .chip.error { background: rgba(248,81,73,.15); color: var(--err); }
+  .chip.unconfigured { background: rgba(139,148,158,.15); color: var(--muted); }
+  .chip.running { background: rgba(77,208,225,.15); color: var(--accent); }
+  .table-scroll { overflow-x: auto; }
+  @media (max-width: 620px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+  <div class="head">
+    <span id="dot" class="dot"></span>
+    <h1>Scrape Runs</h1>
+    <span id="status" class="sub">connecting…</span>
+  </div>
+
+  <div class="bar-wrap">
+    <div class="bar-label">
+      <span id="barText">Warmup progress</span>
+      <span id="barPct" class="pct">—</span>
+    </div>
+    <div class="track"><div id="fill" class="fill"></div></div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="n" id="tActive">0</div><div class="k">Active</div></div>
+    <div class="tile events"><div class="n" id="tEvents">0</div><div class="k">Events found</div></div>
+    <div class="tile blocked"><div class="n" id="tBlocked">0</div><div class="k">Blocked</div></div>
+    <div class="tile errors"><div class="n" id="tErrors">0</div><div class="k">Errors</div></div>
+  </div>
+
+  <h2>Active</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Source</th><th>City</th><th>Elapsed</th><th>State</th></tr></thead>
+      <tbody id="active"><tr><td class="empty" colspan="4">none</td></tr></tbody>
+    </table>
+  </div>
+
+  <h2>Recent</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Source</th><th>City</th><th class="num">Events</th><th>Status</th><th>Finished</th></tr></thead>
+      <tbody id="recent"><tr><td class="empty" colspan="5">none yet</td></tr></tbody>
+    </table>
+  </div>
+
+<script>
+  const POLL_MS = 2000;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function ago(iso) {
+    if (!iso) return "";
+    const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    if (s < 60) return Math.round(s) + "s ago";
+    if (s < 3600) return Math.round(s / 60) + "m ago";
+    return Math.round(s / 3600) + "h ago";
+  }
+  function elapsed(iso) {
+    if (!iso) return "";
+    const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    if (s < 60) return Math.round(s) + "s";
+    return Math.floor(s / 60) + "m " + Math.round(s % 60) + "s";
+  }
+
+  function render(d) {
+    const t = d.totals || {};
+    $("tActive").textContent = t.active || 0;
+    $("tEvents").textContent = t.eventsFound || 0;
+    $("tBlocked").textContent = t.blocked || 0;
+    $("tErrors").textContent = t.errors || 0;
+
+    // Progress bar: only meaningful when a warmup set a plan.
+    if (t.plan > 0) {
+      const pct = Math.min(100, Math.round((t.done / t.plan) * 100));
+      $("fill").style.width = pct + "%";
+      $("barPct").textContent = pct + "%  (" + t.done + " / " + t.plan + ")";
+      $("barText").textContent = pct >= 100 ? "Warmup complete" : "Warmup progress";
+    } else {
+      $("barPct").textContent = (t.done || 0) + " runs";
+      $("fill").style.width = (t.done ? 100 : 0) + "%";
+      $("barText").textContent = "No warmup running";
+    }
+
+    const active = d.active || [];
+    $("active").innerHTML = active.length
+      ? active.map((r) =>
+          `<tr><td class="src">${esc(r.source)}</td><td>${esc(r.city)}</td>` +
+          `<td>${elapsed(r.startedAt)}</td><td><span class="chip running">running</span></td></tr>`).join("")
+      : `<tr><td class="empty" colspan="4">none</td></tr>`;
+
+    const recent = d.recent || [];
+    $("recent").innerHTML = recent.length
+      ? recent.map((r) => {
+          const cls = ["ok", "blocked", "error", "unconfigured"].includes(r.status) ? r.status : "unconfigured";
+          const st = r.err ? `${esc(r.status)} — ${esc(r.err)}` : esc(r.status || "");
+          return `<tr><td class="src">${esc(r.source)}</td><td>${esc(r.city)}</td>` +
+            `<td class="num">${r.count || 0}</td><td><span class="chip ${cls}">${st}</span></td>` +
+            `<td>${ago(r.finishedAt)}</td></tr>`;
+        }).join("")
+      : `<tr><td class="empty" colspan="5">none yet</td></tr>`;
+  }
+
+  async function tick() {
+    try {
+      const res = await fetch("runs.json", { cache: "no-store" });
+      if (!res.ok) throw new Error(res.status);
+      render(await res.json());
+      $("dot").className = "dot live";
+      $("status").textContent = "live · updated " + new Date().toLocaleTimeString();
+    } catch (e) {
+      $("dot").className = "dot stale";
+      $("status").textContent = "reconnecting…";
+    }
+  }
+  tick();
+  setInterval(tick, POLL_MS);
+</script>
+</body>
+</html>

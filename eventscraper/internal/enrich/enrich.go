@@ -28,8 +28,15 @@ func IsPlaceholderURL(u string) bool {
 	return placeholderRe.MatchString(u)
 }
 
+// Doer is the subset of *http.Client the enricher needs, so the shared stealth
+// client can be injected for og:image fetches (they hit the same third-party
+// event sites the scrapers do).
+type Doer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
 type Enricher struct {
-	HTTP       *http.Client
+	HTTP       Doer
 	Concurrent int
 }
 

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -28,41 +29,59 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	root := &cobra.Command{Use: "eventscraper", Short: "Worldwide events scraper"}
-	root.AddCommand(serveCmd(), scrapeCmd(), listCmd(), mcpCmd())
+	root.AddCommand(serveCmd(), scrapeCmd(), listCmd(), mcpCmd(), migratePostgresCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-func bootstrap(ctx context.Context) (config.Config, *geo.Catalog, store.Store, *scraper.Registry, error) {
+func bootstrap(ctx context.Context) (config.Config, *geo.Catalog, store.Store, *scraper.Registry, *scraper.StealthClient, *scraper.ProxyPool, error) {
 	cfg := config.FromEnv()
 	cat, err := geo.Load(cfg.CitiesPath)
 	if err != nil {
-		return cfg, nil, nil, nil, fmt.Errorf("load cities: %w", err)
+		return cfg, nil, nil, nil, nil, nil, fmt.Errorf("load cities: %w", err)
 	}
-	st, err := store.NewSQLite(cfg.DBPath)
+	var st store.Store
+	if cfg.DatabaseURL != "" {
+		st, err = store.NewPostgres(ctx, cfg.DatabaseURL)
+	} else {
+		st, err = store.NewSQLite(cfg.DBPath)
+	}
 	if err != nil {
-		return cfg, cat, nil, nil, fmt.Errorf("open store: %w", err)
+		return cfg, cat, nil, nil, nil, nil, fmt.Errorf("open store: %w", err)
 	}
 	if err := st.Init(ctx); err != nil {
-		return cfg, cat, nil, nil, fmt.Errorf("init store: %w", err)
+		return cfg, cat, nil, nil, nil, nil, fmt.Errorf("init store: %w", err)
 	}
+
+	// Shared stealth client + proxy pool. An empty pool (no proxy config)
+	// means direct connections — the scrapers work identically either way.
+	pool := scraper.NewProxyPool(scraper.LoadProxies(cfg.ProxiesInline, cfg.ProxyListPath, cfg.ProxyListURL))
+	if pool.Len() > 0 {
+		slog.Info("proxy pool loaded", "count", pool.Len())
+	}
+	client := scraper.NewStealthClient(scraper.StealthConfig{
+		Pool:       pool,
+		Timeout:    20 * time.Second,
+		MaxRetries: cfg.ScrapeMaxRetries,
+	})
+
 	reg := scraper.NewRegistry()
 	// Free sources — always on.
-	reg.Register(scraper.NewEventbrite())
-	reg.Register(scraper.NewSongkick())
-	reg.Register(scraper.NewLuma())
-	reg.Register(scraper.NewViralagenda())
+	reg.Register(scraper.NewEventbrite(pool))
+	reg.Register(scraper.NewSongkick(pool))
+	reg.Register(scraper.NewLuma(client))
+	reg.Register(scraper.NewViralagenda(client))
 	// Paid sources — only when explicitly opted in.
 	if !cfg.FreeOnly {
 		if cfg.TicketmasterKey != "" {
-			reg.Register(scraper.NewTicketmaster(cfg.TicketmasterKey))
+			reg.Register(scraper.NewTicketmaster(cfg.TicketmasterKey, client))
 		}
 		if cfg.MeetupOAuthToken != "" {
 			reg.Register(scraper.NewMeetup(cfg.MeetupOAuthToken))
 		}
 	}
-	return cfg, cat, st, reg, nil
+	return cfg, cat, st, reg, client, pool, nil
 }
 
 func serveCmd() *cobra.Command {
@@ -72,7 +91,7 @@ func serveCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-			cfg, cat, st, reg, err := bootstrap(ctx)
+			cfg, cat, st, reg, client, pool, err := bootstrap(ctx)
 			if err != nil {
 				return err
 			}
@@ -90,12 +109,23 @@ func serveCmd() *cobra.Command {
 			}); err == nil && n > 0 {
 				slog.Info("cleared placeholder images", "count", n)
 			}
-			sch := scheduler.New(st, reg, cat)
+			sch := scheduler.New(st, reg, cat,
+				scheduler.WithConcurrency(cfg.ScrapeConcurrency),
+				scheduler.WithDelays(cfg.ScrapeMinDelayMS, cfg.ScrapeMaxDelayMS),
+				scheduler.WithScrapeClient(client),
+			)
+			backend := "sqlite:" + cfg.DBPath
+			if cfg.DatabaseURL != "" {
+				backend = "postgres"
+			}
 			slog.Info("eventscraper serve",
-				"port", cfg.Port, "db", cfg.DBPath,
+				"port", cfg.Port, "store", backend,
 				"sources", len(reg.All()), "cities", len(cat.All()),
 				"freeOnly", cfg.FreeOnly, "warmupCities", cfg.WarmupCities,
+				"concurrency", cfg.ScrapeConcurrency, "proxies", pool.Len(),
 			)
+			// Refresh the proxy list periodically (no-op without a URL source).
+			go scraper.AutoReloadProxies(ctx, pool, cfg.ProxyListURL, 10*time.Minute)
 			// Kick off warmup in the background so the feed is populated
 			// without blocking the server start.
 			go sch.Warmup(ctx, cfg.WarmupCities)
@@ -116,7 +146,7 @@ func mcpCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-			_, cat, st, reg, err := bootstrap(ctx)
+			_, cat, st, reg, _, _, err := bootstrap(ctx)
 			if err != nil {
 				return err
 			}
@@ -143,11 +173,10 @@ func scrapeCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-			cfg, cat, st, reg, err := bootstrap(ctx)
+			cfg, cat, st, reg, client, _, err := bootstrap(ctx)
 			if err != nil {
 				return err
 			}
-			_ = cfg
 			defer st.Close()
 			src := model.Source(srcStr)
 			if !src.Valid() {
@@ -168,7 +197,11 @@ func scrapeCmd() *cobra.Command {
 				}
 				cats = append(cats, c)
 			}
-			sch := scheduler.New(st, reg, cat)
+			sch := scheduler.New(st, reg, cat,
+				scheduler.WithConcurrency(cfg.ScrapeConcurrency),
+				scheduler.WithDelays(cfg.ScrapeMinDelayMS, cfg.ScrapeMaxDelayMS),
+				scheduler.WithScrapeClient(client),
+			)
 			sch.Run(ctx, src, city, cats)
 			// Re-read what we just persisted so we can report counts.
 			rows, _, _, err := st.Query(ctx, store.Query{Source: src, CityID: city.ID, Limit: 2000})
@@ -193,13 +226,58 @@ func scrapeCmd() *cobra.Command {
 	return c
 }
 
+func migratePostgresCmd() *cobra.Command {
+	var from, to string
+	var batch int
+	c := &cobra.Command{
+		Use:   "migrate-postgres",
+		Short: "Copy events, scrape status and geo-addresses from a SQLite DB into Postgres",
+		Long:  "Idempotent (upsert-based) one-way copy from a SQLite file into a Postgres/PostGIS store. Safe to re-run. Target DSN comes from --to or $DATABASE_URL.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			if to == "" {
+				to = os.Getenv("DATABASE_URL")
+			}
+			if to == "" {
+				return fmt.Errorf("target Postgres DSN required: pass --to or set DATABASE_URL")
+			}
+			src, err := store.NewSQLite(from)
+			if err != nil {
+				return fmt.Errorf("open source sqlite: %w", err)
+			}
+			defer src.Close()
+			dst, err := store.NewPostgres(ctx, to)
+			if err != nil {
+				return fmt.Errorf("open target postgres: %w", err)
+			}
+			defer dst.Close()
+			if err := dst.Init(ctx); err != nil {
+				return fmt.Errorf("init target schema: %w", err)
+			}
+			stats, err := store.MigrateSQLiteToPostgres(ctx, src, dst, batch)
+			if err != nil {
+				return err
+			}
+			slog.Info("migration complete",
+				"events", stats.Events, "scrapes", stats.Scrapes,
+				"geoAddresses", stats.GeoAddresses,
+			)
+			return nil
+		},
+	}
+	c.Flags().StringVar(&from, "from", "./eventscraper.db", "source SQLite database path")
+	c.Flags().StringVar(&to, "to", "", "target Postgres DSN (default $DATABASE_URL)")
+	c.Flags().IntVar(&batch, "batch", 500, "rows per batch")
+	return c
+}
+
 func listCmd() *cobra.Command {
 	c := &cobra.Command{Use: "list", Short: "List cities or sources"}
 	c.AddCommand(&cobra.Command{
 		Use:   "cities",
 		Short: "Show all configured cities",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, cat, st, _, err := bootstrap(cmd.Context())
+			_, cat, st, _, _, _, err := bootstrap(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -214,7 +292,7 @@ func listCmd() *cobra.Command {
 		Use:   "sources",
 		Short: "Show all configured sources",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, _, st, reg, err := bootstrap(cmd.Context())
+			_, _, st, reg, _, _, err := bootstrap(cmd.Context())
 			if err != nil {
 				return err
 			}

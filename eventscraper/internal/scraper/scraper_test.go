@@ -60,7 +60,7 @@ func TestMeetupRequiresOAuth(t *testing.T) {
 }
 
 func TestTicketmasterRequiresKey(t *testing.T) {
-	tm := NewTicketmaster("")
+	tm := NewTicketmaster("", nil)
 	_, err := tm.Scrape(context.Background(), geo.City{Name: "Lisbon", Country: "PT"}, model.AllCategories())
 	if !errors.Is(err, ErrUnconfigured) {
 		t.Errorf("err = %v, want ErrUnconfigured", err)
@@ -71,7 +71,7 @@ func TestTicketmasterRequiresKey(t *testing.T) {
 }
 
 func TestEventbriteNoSlugReturnsEmpty(t *testing.T) {
-	eb := NewEventbrite()
+	eb := NewEventbrite(nil)
 	got, err := eb.Scrape(context.Background(), geo.City{ID: "x"}, model.AllCategories())
 	if err != nil {
 		t.Errorf("err = %v, want nil", err)
@@ -85,7 +85,7 @@ func TestEventbriteNoSlugReturnsEmpty(t *testing.T) {
 }
 
 func TestSongkickNoMetroReturnsEmpty(t *testing.T) {
-	sk := NewSongkick()
+	sk := NewSongkick(nil)
 	got, err := sk.Scrape(context.Background(), geo.City{ID: "x"}, []model.Category{model.CategoryMusic})
 	if err != nil || len(got) != 0 {
 		t.Errorf("expected empty result, got len=%d err=%v", len(got), err)
@@ -96,7 +96,7 @@ func TestSongkickNoMetroReturnsEmpty(t *testing.T) {
 }
 
 func TestSongkickNonMusicCategoriesReturnEmpty(t *testing.T) {
-	sk := NewSongkick()
+	sk := NewSongkick(nil)
 	got, err := sk.Scrape(context.Background(),
 		geo.City{ID: "x", SongkickMetro: "1234-pt-lisbon"},
 		[]model.Category{model.CategoryTech, model.CategoryBusiness},
@@ -107,7 +107,7 @@ func TestSongkickNonMusicCategoriesReturnEmpty(t *testing.T) {
 }
 
 func TestLumaNoSlugReturnsEmpty(t *testing.T) {
-	l := NewLuma()
+	l := NewLuma(nil)
 	got, err := l.Scrape(context.Background(), geo.City{}, model.AllCategories())
 	if err != nil || len(got) != 0 {
 		t.Errorf("expected empty result, got len=%d err=%v", len(got), err)

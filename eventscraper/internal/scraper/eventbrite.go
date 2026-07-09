@@ -12,14 +12,19 @@ import (
 
 	"github.com/gocolly/colly/v2"
 	"github.com/gocolly/colly/v2/extensions"
+	"github.com/gocolly/colly/v2/proxy"
 
 	"github.com/jorgenunes/eventscraper/internal/geo"
 	"github.com/jorgenunes/eventscraper/internal/model"
 )
 
-type Eventbrite struct{}
+type Eventbrite struct {
+	pool *ProxyPool
+}
 
-func NewEventbrite() *Eventbrite { return &Eventbrite{} }
+// NewEventbrite builds the scraper. A non-empty proxy pool is round-robined
+// across colly requests; a nil/empty pool means direct connections.
+func NewEventbrite(pool *ProxyPool) *Eventbrite { return &Eventbrite{pool: pool} }
 
 func (e *Eventbrite) Source() model.Source { return model.SourceEventbrite }
 
@@ -63,8 +68,12 @@ func (e *Eventbrite) Scrape(ctx context.Context, city geo.City, cats []model.Cat
 			colly.Async(true),
 			colly.AllowedDomains("www.eventbrite.com", "eventbrite.com", "www.eventbrite.co.uk", "eventbrite.co.uk"),
 		)
-		extensions.RandomUserAgent(c)
 		extensions.Referer(c)
+		if e.pool != nil && e.pool.Len() > 0 {
+			if sw, err := proxy.RoundRobinProxySwitcher(e.pool.URLStrings()...); err == nil {
+				c.SetProxyFunc(sw)
+			}
+		}
 		_ = c.Limit(&colly.LimitRule{
 			DomainGlob:  "*eventbrite*",
 			Parallelism: 4,
@@ -82,6 +91,7 @@ func (e *Eventbrite) Scrape(ctx context.Context, city geo.City, cats []model.Cat
 		})
 
 		c.OnRequest(func(r *colly.Request) {
+			r.Headers.Set("User-Agent", RandomUA(nil))
 			r.Headers.Set("Accept-Language", "en-US,en;q=0.9")
 		})
 

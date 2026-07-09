@@ -9,15 +9,19 @@ import (
 	"time"
 
 	"github.com/gocolly/colly/v2"
-	"github.com/gocolly/colly/v2/extensions"
+	"github.com/gocolly/colly/v2/proxy"
 
 	"github.com/jorgenunes/eventscraper/internal/geo"
 	"github.com/jorgenunes/eventscraper/internal/model"
 )
 
-type Songkick struct{}
+type Songkick struct {
+	pool *ProxyPool
+}
 
-func NewSongkick() *Songkick { return &Songkick{} }
+// NewSongkick builds the scraper. A non-empty proxy pool is round-robined
+// across colly requests; a nil/empty pool means direct connections.
+func NewSongkick(pool *ProxyPool) *Songkick { return &Songkick{pool: pool} }
 
 func (s *Songkick) Source() model.Source { return model.SourceSongkick }
 
@@ -35,7 +39,11 @@ func (s *Songkick) Scrape(ctx context.Context, city geo.City, cats []model.Categ
 		colly.Async(true),
 		colly.AllowedDomains("www.songkick.com", "songkick.com"),
 	)
-	extensions.RandomUserAgent(c)
+	if s.pool != nil && s.pool.Len() > 0 {
+		if sw, err := proxy.RoundRobinProxySwitcher(s.pool.URLStrings()...); err == nil {
+			c.SetProxyFunc(sw)
+		}
+	}
 	_ = c.Limit(&colly.LimitRule{
 		DomainGlob:  "*songkick*",
 		Parallelism: 4,
@@ -116,6 +124,7 @@ func (s *Songkick) Scrape(ctx context.Context, city geo.City, cats []model.Categ
 	})
 
 	c.OnRequest(func(r *colly.Request) {
+		r.Headers.Set("User-Agent", RandomUA(nil))
 		r.Headers.Set("Accept-Language", "en-US,en;q=0.9")
 	})
 

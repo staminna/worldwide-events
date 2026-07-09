@@ -15,14 +15,16 @@ import (
 
 type Ticketmaster struct {
 	APIKey string
-	HTTP   *http.Client
+	client *StealthClient
 }
 
-func NewTicketmaster(apiKey string) *Ticketmaster {
-	return &Ticketmaster{
-		APIKey: apiKey,
-		HTTP:   &http.Client{Timeout: 20 * time.Second},
+// NewTicketmaster builds the scraper with the shared stealth client. A nil
+// client (tests) falls back to a plain direct client.
+func NewTicketmaster(apiKey string, client *StealthClient) *Ticketmaster {
+	if client == nil {
+		client = NewStealthClient(StealthConfig{})
 	}
+	return &Ticketmaster{APIKey: apiKey, client: client}
 }
 
 func (t *Ticketmaster) Source() model.Source { return model.SourceTicketmaster }
@@ -64,7 +66,8 @@ func (t *Ticketmaster) Scrape(ctx context.Context, city geo.City, cats []model.C
 		q.Set("startDateTime", time.Now().UTC().Format("2006-01-02T15:04:05Z"))
 
 		req, _ := http.NewRequestWithContext(ctx, "GET", ticketmasterBaseURL+"?"+q.Encode(), nil)
-		resp, err := t.HTTP.Do(req)
+		req.Header.Set("Accept", "application/json")
+		resp, err := t.client.Do(req)
 		if err != nil {
 			continue
 		}

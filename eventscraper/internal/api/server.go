@@ -55,6 +55,8 @@ func (s *Server) Router() http.Handler {
 	r.Get("/geo/search", s.handleGeoSearch)
 	r.Get("/events.geojson", s.handleEventsGeoJSON)
 	r.Get("/viz", s.handleViz)
+	r.Get("/runs", s.handleRuns)
+	r.Get("/runs.json", s.handleRunsJSON)
 	r.Get("/sources", s.handleSources)
 	r.Get("/events", s.handleEvents)
 	r.Get("/events/{id}", s.handleEvent)

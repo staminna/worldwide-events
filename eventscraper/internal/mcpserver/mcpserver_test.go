@@ -153,7 +153,7 @@ func TestSearchEventsInvalidCategory(t *testing.T) {
 
 func TestListSourcesReflectsRegistry(t *testing.T) {
 	reg := scraper.NewRegistry()
-	reg.Register(scraper.NewLuma()) // only luma enabled
+	reg.Register(scraper.NewLuma(nil)) // only luma enabled
 
 	cs := connect(t, newStore(t), newCatalog(t), reg)
 

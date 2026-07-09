@@ -1,0 +1,46 @@
+name: eventscraper-geosql
+
+# Lightweight geosql stack: a PostGIS database that the eventscraper app writes
+# to, plus a local Dekart that reads it (read-only) to author Kepler.gl maps.
+# Credentials here are local-dev defaults, not secrets.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: eventscraper-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eventscraper
+      POSTGRES_PASSWORD: eventscraper
+      POSTGRES_DB: eventscraper
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgis-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventscraper -d eventscraper"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Dekart in localhost mode: SQLite metadata (built-in, no license key) + local
+  # file storage under /dekart/data + no auth. Its query datasource is our
+  # PostGIS, via the read-only dekart_ro role. UI/CLI at 127.0.0.1:8080.
+  dekart:
+    image: dekartxyz/dekart:latest
+    container_name: eventscraper-dekart
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DEKART_DATASOURCE: PG
+      DEKART_POSTGRES_DATASOURCE_CONNECTION: "postgres://dekart_ro:dekart_ro@db:5432/eventscraper?sslmode=disable"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - dekart-data:/dekart/data
+
+volumes:
+  postgis-data:
+  dekart-data:

@@ -22,15 +22,83 @@ type Scheduler struct {
 	cities   *geo.Catalog
 	single   *cache.SingleFlight
 	enricher *enrich.Enricher
+	tracker  *RunTracker
+
+	sem         chan struct{} // bounds simultaneous scrapes
+	concurrency int
+	minDelay    time.Duration // stagger before each scrape unit
+	maxDelay    time.Duration
 }
 
-func New(st store.Store, reg *scraper.Registry, cat *geo.Catalog) *Scheduler {
-	return &Scheduler{
-		store:    st,
-		registry: reg,
-		cities:   cat,
-		single:   cache.NewSingleFlight(),
-		enricher: enrich.New(),
+// Option configures a Scheduler.
+type Option func(*Scheduler)
+
+// WithConcurrency caps simultaneous (source,city) scrapes.
+func WithConcurrency(n int) Option {
+	return func(s *Scheduler) {
+		if n > 0 {
+			s.concurrency = n
+		}
+	}
+}
+
+// WithDelays sets the min/max random stagger applied before each scrape unit.
+func WithDelays(minMS, maxMS int) Option {
+	return func(s *Scheduler) {
+		if minMS >= 0 {
+			s.minDelay = time.Duration(minMS) * time.Millisecond
+		}
+		if maxMS >= 0 {
+			s.maxDelay = time.Duration(maxMS) * time.Millisecond
+		}
+	}
+}
+
+// WithScrapeClient routes image enrichment through the given HTTP doer (the
+// shared stealth client), so backfill fetches get the same UA/proxy treatment.
+func WithScrapeClient(d enrich.Doer) Option {
+	return func(s *Scheduler) {
+		if d != nil {
+			s.enricher.HTTP = d
+		}
+	}
+}
+
+func New(st store.Store, reg *scraper.Registry, cat *geo.Catalog, opts ...Option) *Scheduler {
+	s := &Scheduler{
+		store:       st,
+		registry:    reg,
+		cities:      cat,
+		single:      cache.NewSingleFlight(),
+		enricher:    enrich.New(),
+		tracker:     NewRunTracker(),
+		concurrency: 4,
+		minDelay:    300 * time.Millisecond,
+		maxDelay:    1200 * time.Millisecond,
+	}
+	for _, o := range opts {
+		o(s)
+	}
+	s.sem = make(chan struct{}, s.concurrency)
+	return s
+}
+
+// Snapshot exposes the live run state for the /runs dashboard.
+func (s *Scheduler) Snapshot() Snapshot { return s.tracker.Snapshot() }
+
+// pace sleeps a random min..max stagger (or returns early on ctx cancel), so
+// concurrent scrapes don't fire in lockstep.
+func (s *Scheduler) pace(ctx context.Context) {
+	if s.maxDelay <= 0 {
+		return
+	}
+	d := s.minDelay
+	if s.maxDelay > s.minDelay {
+		d += time.Duration(rand.Int63n(int64(s.maxDelay - s.minDelay)))
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
 	}
 }
 
@@ -46,8 +114,19 @@ func (s *Scheduler) Run(ctx context.Context, src model.Source, city geo.City, ca
 	}
 	key := string(src) + "|" + city.ID
 	_ = s.single.Do(ctx, key, func(ctx context.Context) error {
+		// Bound global concurrency: a burst of MaybeRefresh calls queues here
+		// instead of spawning hundreds of simultaneous scrapes.
+		select {
+		case s.sem <- struct{}{}:
+			defer func() { <-s.sem }()
+		case <-ctx.Done():
+			return nil
+		}
+		s.pace(ctx)
+
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
+		s.tracker.Begin(string(src), city.ID)
 		events, err := sc.Scrape(ctx, city, cats)
 		now := time.Now().UTC()
 		var ttl time.Duration
@@ -94,6 +173,7 @@ func (s *Scheduler) Run(ctx context.Context, src model.Source, city geo.City, ca
 			Status:     status,
 			ErrMessage: errMsg,
 		})
+		s.tracker.Finish(string(src), city.ID, len(events), status, errMsg)
 		slog.Info("scrape complete",
 			"src", src, "city", city.ID, "count", len(events), "status", status,
 		)
@@ -144,6 +224,8 @@ func (s *Scheduler) Warmup(ctx context.Context, cityLimit int) {
 	}
 	scrapers := s.registry.All()
 	slog.Info("warmup starting", "cities", len(cities), "sources", len(scrapers))
+	// Progress-bar denominator: every source×city unit this warmup covers.
+	s.tracker.SetPlan(len(cities) * len(scrapers))
 	for _, sc := range scrapers {
 		for _, city := range cities {
 			select {
@@ -153,11 +235,12 @@ func (s *Scheduler) Warmup(ctx context.Context, cityLimit int) {
 			}
 			st, ok, err := s.store.GetScrape(ctx, sc.Source(), city.ID)
 			if err == nil && ok && time.Now().Before(st.ExpiresAt) {
+				// Already fresh — count it done so the bar still reaches 100%.
+				s.tracker.Skip()
 				continue
 			}
+			// Run applies its own semaphore + pacing stagger.
 			s.Run(ctx, sc.Source(), city, model.AllCategories())
-			// brief jitter so we don't fire requests in lockstep
-			time.Sleep(time.Duration(200+rand.Intn(300)) * time.Millisecond)
 		}
 	}
 	slog.Info("warmup complete")

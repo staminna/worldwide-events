@@ -18,14 +18,19 @@ import (
 // Luma scrapes lu.ma via their public discover API
 // (https://api.lu.ma/discover/get-paginated-events). No auth required.
 type Luma struct {
-	HTTP *http.Client
+	client *StealthClient
 
 	mu       sync.Mutex
 	placeIDs map[string]string // city ID → discplace api_id; "" = page has none
 }
 
-func NewLuma() *Luma {
-	return &Luma{HTTP: &http.Client{Timeout: 15 * time.Second}}
+// NewLuma builds the scraper with the shared stealth client. A nil client
+// (tests) falls back to a plain direct client.
+func NewLuma(client *StealthClient) *Luma {
+	if client == nil {
+		client = NewStealthClient(StealthConfig{})
+	}
+	return &Luma{client: client}
 }
 
 func (l *Luma) Source() model.Source { return model.SourceLuma }
@@ -74,8 +79,7 @@ func (l *Luma) placeID(ctx context.Context, city geo.City) string {
 
 	slug := city.LumaSlug()
 	req, _ := http.NewRequestWithContext(ctx, "GET", "https://luma.com/"+slug, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; eventscraper/1.0)")
-	resp, err := l.HTTP.Do(req)
+	resp, err := l.client.Do(req)
 	if err != nil {
 		// Network failure: don't cache, so the next scrape retries.
 		return ""
@@ -149,9 +153,8 @@ func (l *Luma) Scrape(ctx context.Context, city geo.City, cats []model.Category)
 			}
 
 			req, _ := http.NewRequestWithContext(ctx, "GET", lumaDiscoverURL+"?"+q.Encode(), nil)
-			req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; eventscraper/1.0)")
 			req.Header.Set("Accept", "application/json")
-			resp, err := l.HTTP.Do(req)
+			resp, err := l.client.Do(req)
 			if err != nil {
 				break
 			}
