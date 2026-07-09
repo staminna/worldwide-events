@@ -146,13 +146,13 @@ func mcpCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-			_, cat, st, reg, _, _, err := bootstrap(ctx)
+			cfg, cat, st, reg, _, _, err := bootstrap(ctx)
 			if err != nil {
 				return err
 			}
 			defer st.Close()
-			slog.Info("eventscraper mcp", "transport", "stdio", "sources", len(reg.All()), "cities", len(cat.All()))
-			srv := mcpserver.New(st, cat, reg)
+			slog.Info("eventscraper mcp", "transport", "stdio", "sources", len(reg.All()), "cities", len(cat.All()), "runsURL", cfg.RunsURL)
+			srv := mcpserver.New(st, cat, reg, cfg.RunsURL, cfg.AdminToken)
 			if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil && !errors.Is(err, context.Canceled) {
 				return err
 			}

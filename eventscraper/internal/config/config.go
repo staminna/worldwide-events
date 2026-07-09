@@ -21,6 +21,10 @@ type Config struct {
 	// default embedded SQLite to Postgres/PostGIS.
 	DatabaseURL string
 
+	// RunsURL is where the MCP scrape_status tool fetches the live run
+	// snapshot from (the now-private /runs.json). AdminToken authenticates it.
+	RunsURL string
+
 	// Stealth / pacing knobs. All optional; the defaults give a polite,
 	// bounded engine even with no proxies configured.
 	ScrapeConcurrency int // max simultaneous (source,city) scrapes
@@ -47,6 +51,8 @@ func FromEnv() Config {
 		MeetupOAuthToken: os.Getenv("MEETUP_OAUTH_TOKEN"),
 		AllowedOrigin:    getenv("ALLOWED_ORIGIN", "*"),
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
+		RunsURL: getenv("RUNS_URL",
+			"https://api.iamjorgenunes.com/eventscraper/runs.json"),
 		FreeOnly:         getenv("FREE_ONLY", "true") != "false",
 		// 0 means "all cities in the catalog".
 		WarmupCities: atoiOrZero(os.Getenv("WARMUP_CITIES")),

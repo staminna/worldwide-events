@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -55,8 +56,9 @@ func (s *Server) Router() http.Handler {
 	r.Get("/geo/search", s.handleGeoSearch)
 	r.Get("/events.geojson", s.handleEventsGeoJSON)
 	r.Get("/viz", s.handleViz)
-	r.Get("/runs", s.handleRuns)
-	r.Get("/runs.json", s.handleRunsJSON)
+	// Ops surface — private, gated by ADMIN_TOKEN (see requireAdmin).
+	r.Get("/runs", s.requireAdmin(s.handleRuns))
+	r.Get("/runs.json", s.requireAdmin(s.handleRunsJSON))
 	r.Get("/sources", s.handleSources)
 	r.Get("/events", s.handleEvents)
 	r.Get("/events/{id}", s.handleEvent)
@@ -64,8 +66,23 @@ func (s *Server) Router() http.Handler {
 	r.Post("/upload", s.handleUpload)
 	r.Get("/uploads/{name}", s.handleUploadServe)
 	r.Get("/img", s.handleImg)
-	r.Post("/refresh", s.handleRefresh)
+	r.Post("/refresh", s.requireAdmin(s.handleRefresh))
 	return r
+}
+
+// requireAdmin gates a handler behind ADMIN_TOKEN. When the token is unset
+// (local dev) the gate is open, matching the historical /refresh behavior.
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.AdminToken != "" {
+			tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			if tok != s.cfg.AdminToken {
+				writeErr(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+		}
+		next(w, r)
+	}
 }
 
 func (s *Server) Serve(ctx context.Context) error {

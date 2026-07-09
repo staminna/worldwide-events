@@ -5,7 +5,9 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -24,7 +26,10 @@ const Version = "v1.0.0"
 // returned server still needs to be run over a transport, e.g.
 //
 //	srv.Run(ctx, &mcp.StdioTransport{})
-func New(st store.Store, cat *geo.Catalog, reg *scraper.Registry) *mcp.Server {
+//
+// runsURL + adminToken configure the scrape_status tool, which fetches the
+// backend's private /runs.json.
+func New(st store.Store, cat *geo.Catalog, reg *scraper.Registry, runsURL, adminToken string) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "eventscraper", Version: Version}, nil)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -42,7 +47,115 @@ func New(st store.Store, cat *geo.Catalog, reg *scraper.Registry) *mcp.Server {
 		Description: "List every event source and whether it is currently enabled.",
 	}, listSources(reg))
 
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "scrape_status",
+		Description: "Live scrape run status from the eventscraper backend: warmup progress, currently active runs, recent runs, and session totals (events found, blocked, errors). Ask again for fresh numbers.",
+	}, scrapeStatus(runsURL, adminToken))
+
 	return srv
+}
+
+// --- scrape_status ---
+
+var statusClient = &http.Client{Timeout: 10 * time.Second}
+
+// ScrapeStatusInput optionally trims how many recent runs are returned.
+type ScrapeStatusInput struct {
+	RecentLimit int `json:"recentLimit,omitempty" jsonschema:"max recent runs to include (default 15)"`
+}
+
+// runsSnapshot mirrors scheduler.Snapshot's JSON shape (kept local to avoid a
+// dependency on the scheduler package).
+type runsSnapshot struct {
+	Totals runsTotals `json:"totals"`
+	Active []runsView `json:"active"`
+	Recent []runsView `json:"recent"`
+}
+
+type runsTotals struct {
+	Plan        int `json:"plan"`
+	Done        int `json:"done"`
+	Active      int `json:"active"`
+	EventsFound int `json:"eventsFound"`
+	Blocked     int `json:"blocked"`
+	Errors      int `json:"errors"`
+}
+
+type runsView struct {
+	Source     string `json:"source"`
+	City       string `json:"city"`
+	StartedAt  string `json:"startedAt"`
+	FinishedAt string `json:"finishedAt,omitempty"`
+	Count      int    `json:"count"`
+	Status     string `json:"status,omitempty"`
+	Err        string `json:"err,omitempty"`
+}
+
+func scrapeStatus(runsURL, token string) mcp.ToolHandlerFor[ScrapeStatusInput, runsSnapshot] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in ScrapeStatusInput) (*mcp.CallToolResult, runsSnapshot, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, runsURL, nil)
+		if err != nil {
+			return nil, runsSnapshot{}, fmt.Errorf("build request: %w", err)
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := statusClient.Do(req)
+		if err != nil {
+			return nil, runsSnapshot{}, fmt.Errorf("fetch %s: %w", runsURL, err)
+		}
+		defer resp.Body.Close()
+		switch {
+		case resp.StatusCode == http.StatusUnauthorized:
+			return nil, runsSnapshot{}, fmt.Errorf("unauthorized (check ADMIN_TOKEN for %s)", runsURL)
+		case resp.StatusCode != http.StatusOK:
+			return nil, runsSnapshot{}, fmt.Errorf("runs endpoint returned %d", resp.StatusCode)
+		}
+		var snap runsSnapshot
+		if err := json.NewDecoder(resp.Body).Decode(&snap); err != nil {
+			return nil, runsSnapshot{}, fmt.Errorf("decode runs snapshot: %w", err)
+		}
+		limit := in.RecentLimit
+		if limit <= 0 {
+			limit = 15
+		}
+		if len(snap.Recent) > limit {
+			snap.Recent = snap.Recent[:limit]
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: formatSnapshot(snap)}},
+		}, snap, nil
+	}
+}
+
+func formatSnapshot(s runsSnapshot) string {
+	var b strings.Builder
+	t := s.Totals
+	if t.Plan > 0 {
+		pct := t.Done * 100 / t.Plan
+		fmt.Fprintf(&b, "Warmup: %d%% (%d/%d units)\n", pct, t.Done, t.Plan)
+	} else {
+		fmt.Fprintf(&b, "Runs done this session: %d\n", t.Done)
+	}
+	fmt.Fprintf(&b, "Active: %d · Events found: %d · Blocked: %d · Errors: %d\n",
+		t.Active, t.EventsFound, t.Blocked, t.Errors)
+	if len(s.Active) > 0 {
+		b.WriteString("\nActive now:\n")
+		for _, r := range s.Active {
+			fmt.Fprintf(&b, "  • %s / %s (since %s)\n", r.Source, r.City, r.StartedAt)
+		}
+	}
+	if len(s.Recent) > 0 {
+		b.WriteString("\nRecent:\n")
+		for _, r := range s.Recent {
+			line := fmt.Sprintf("  • %s / %s — %d events [%s]", r.Source, r.City, r.Count, r.Status)
+			if r.Err != "" {
+				line += " " + r.Err
+			}
+			b.WriteString(line + "\n")
+		}
+	}
+	return b.String()
 }
 
 // SearchEventsInput mirrors the filterable fields of store.Query. Empty fields

@@ -387,13 +387,7 @@ func randomID() (string, error) {
 }
 
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.AdminToken != "" {
-		tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if tok != s.cfg.AdminToken {
-			writeErr(w, 401, "unauthorized")
-			return
-		}
-	}
+	// Auth is enforced by the requireAdmin wrapper in Router().
 	cityID := r.URL.Query().Get("city")
 	srcStr := r.URL.Query().Get("source")
 	city, ok := s.cities.Get(cityID)

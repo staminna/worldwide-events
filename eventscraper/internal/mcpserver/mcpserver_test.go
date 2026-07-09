@@ -3,6 +3,8 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -65,11 +67,16 @@ func decodeStructured(t *testing.T, v any, dst any) {
 
 // connect wires an in-memory client to the mcpserver and returns the session.
 func connect(t *testing.T, st store.Store, cat *geo.Catalog, reg *scraper.Registry) *mcp.ClientSession {
+	return connectWithRuns(t, st, cat, reg, "", "")
+}
+
+// connectWithRuns is connect with an explicit scrape_status runs URL + token.
+func connectWithRuns(t *testing.T, st store.Store, cat *geo.Catalog, reg *scraper.Registry, runsURL, token string) *mcp.ClientSession {
 	t.Helper()
 	ctx := context.Background()
 	serverT, clientT := mcp.NewInMemoryTransports()
 
-	srv := New(st, cat, reg)
+	srv := New(st, cat, reg, runsURL, token)
 	if _, err := srv.Connect(ctx, serverT, nil); err != nil {
 		t.Fatalf("server connect: %v", err)
 	}
@@ -94,11 +101,60 @@ func TestListTools(t *testing.T) {
 	for _, tool := range res.Tools {
 		got[tool.Name] = true
 	}
-	for _, want := range []string{"search_events", "list_cities", "list_sources"} {
+	for _, want := range []string{"search_events", "list_cities", "list_sources", "scrape_status"} {
 		if !got[want] {
 			t.Errorf("missing tool %q; got %v", want, got)
 		}
 	}
+}
+
+func TestScrapeStatus(t *testing.T) {
+	const token = "s3cret"
+	snapshot := `{"totals":{"plan":8,"done":8,"active":1,"eventsFound":42,"blocked":1,"errors":0},
+		"active":[{"source":"luma","city":"lisbon","startedAt":"2026-07-10T10:00:00Z","status":"running"}],
+		"recent":[{"source":"eventbrite","city":"porto","startedAt":"2026-07-10T09:00:00Z","finishedAt":"2026-07-10T09:01:00Z","count":32,"status":"ok"}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(snapshot))
+	}))
+	defer srv.Close()
+
+	t.Run("authorized returns live snapshot", func(t *testing.T) {
+		cs := connectWithRuns(t, newStore(t), newCatalog(t), scraper.NewRegistry(), srv.URL, token)
+		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "scrape_status"})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("tool error: %v", res.Content)
+		}
+		var out runsSnapshot
+		decodeStructured(t, res.StructuredContent, &out)
+		if out.Totals.Plan != 8 || out.Totals.EventsFound != 42 || out.Totals.Blocked != 1 {
+			t.Errorf("totals = %+v", out.Totals)
+		}
+		if len(out.Active) != 1 || out.Active[0].City != "lisbon" {
+			t.Errorf("active = %+v", out.Active)
+		}
+		if len(out.Recent) != 1 || out.Recent[0].Count != 32 {
+			t.Errorf("recent = %+v", out.Recent)
+		}
+	})
+
+	t.Run("wrong token surfaces as tool error", func(t *testing.T) {
+		cs := connectWithRuns(t, newStore(t), newCatalog(t), scraper.NewRegistry(), srv.URL, "wrong")
+		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "scrape_status"})
+		if err != nil {
+			t.Fatalf("CallTool transport error: %v", err)
+		}
+		if !res.IsError {
+			t.Fatalf("expected a tool error for a bad token")
+		}
+	})
 }
 
 func TestSearchEvents(t *testing.T) {
