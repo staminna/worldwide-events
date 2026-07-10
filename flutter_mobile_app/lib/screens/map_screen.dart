@@ -10,8 +10,10 @@ import 'package:maplibre_gl/maplibre_gl.dart';
 
 import '../api/event_api.dart';
 import '../api/routing_api.dart';
+import '../models/chat.dart';
 import '../models/event.dart';
 import '../state/location.dart';
+import '../state/location_share.dart';
 import '../state/providers.dart';
 import '../util/geo.dart';
 import '../widgets/category_style.dart';
@@ -96,6 +98,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final loc = ref.watch(locationProvider);
     final fullscreen = ref.watch(mapFullscreenProvider);
     ref.listen(locationProvider, (_, next) => _syncMySource(next));
+    ref.listen(peersProvider, (_, next) => _syncPeersSource(next));
 
     final events = mapEvents.valueOrNull;
     if (events == null) {
@@ -284,7 +287,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         clusterMaxZoom: 14,
       ),
     );
-    for (final id in ['events-heat', 'route', 'selected', 'me']) {
+    for (final id in ['events-heat', 'route', 'selected', 'me', 'peers']) {
       await c.addSource(
         id,
         const GeojsonSourceProperties(
@@ -461,10 +464,43 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       enableInteraction: false,
     );
 
+    // Friends sharing their live location (chat groups) — slightly larger
+    // than "me", tertiary-colored, with the person's name underneath.
+    await c.addCircleLayer(
+      'peers',
+      'peers-halo',
+      const CircleLayerProperties(circleRadius: 11, circleColor: '#ffffff'),
+      enableInteraction: false,
+    );
+    await c.addCircleLayer(
+      'peers',
+      'peers-dot',
+      CircleLayerProperties(circleRadius: 7.5, circleColor: hexColor(cs.tertiary)),
+      enableInteraction: false,
+    );
+    await c.addSymbolLayer(
+      'peers',
+      'peers-name',
+      SymbolLayerProperties(
+        textField: ['get', 'name'],
+        textFont: ['Montserrat Medium'],
+        textSize: 11,
+        textColor: '#ffffff',
+        textHaloColor: 'rgba(0,0,0,0.7)',
+        textHaloWidth: 1.2,
+        textOffset: [0, 1.4],
+        textAnchor: 'top',
+        textAllowOverlap: true,
+        textIgnorePlacement: true,
+      ),
+      enableInteraction: false,
+    );
+
     if (!mounted) return;
     _styleReady = true;
     _syncEventSources();
     _syncMySource(ref.read(locationProvider));
+    _syncPeersSource(ref.read(peersProvider));
     _autoCenter();
   }
 
@@ -581,6 +617,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     c.setGeoJsonSource(
       'me',
       _fc([if (loc.hasFix) _pointFeature(loc.lat!, loc.lon!)]),
+    );
+  }
+
+  void _syncPeersSource(Map<String, PeerFix> peers) {
+    final c = _controller;
+    if (c == null || !_styleReady) return;
+    c.setGeoJsonSource(
+      'peers',
+      _fc([
+        for (final p in peers.values)
+          _pointFeature(p.lat, p.lon, properties: {'name': p.name}),
+      ]),
     );
   }
 

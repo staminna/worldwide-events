@@ -98,7 +98,10 @@ CREATE TABLE IF NOT EXISTS geo_addresses (
 `
 
 func (p *Postgres) Init(ctx context.Context) error {
-	_, err := p.pool.Exec(ctx, pgSchema)
+	if _, err := p.pool.Exec(ctx, pgSchema); err != nil {
+		return err
+	}
+	_, err := p.pool.Exec(ctx, chatSchemaPG)
 	return err
 }
 

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'models/chat.dart';
 import 'screens/add_event_screen.dart';
 import 'screens/agenda_screen.dart';
 import 'screens/event_detail.dart';
+import 'screens/group_chat_screen.dart';
 import 'screens/home_shell.dart';
 
 void main() {
@@ -20,6 +22,13 @@ final _router = GoRouter(
       path: '/event/:id',
       builder: (_, state) =>
           EventDetailScreen(eventId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/group/:id',
+      builder: (_, state) => GroupChatScreen(
+        groupId: state.pathParameters['id']!,
+        group: state.extra as ChatGroup?,
+      ),
     ),
   ],
 );

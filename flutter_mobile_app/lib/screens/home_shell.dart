@@ -7,6 +7,7 @@ import '../state/follows.dart';
 import '../state/location.dart';
 import '../state/providers.dart';
 import '../util/notifications.dart';
+import 'groups_screen.dart';
 import 'home_screen.dart';
 import 'map_screen.dart';
 
@@ -139,6 +140,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
         children: [
           const HomeScreen(),
           if (_mapVisited) const MapScreen() else const SizedBox.shrink(),
+          const GroupsScreen(),
         ],
       ),
       bottomNavigationBar: fullscreen
@@ -159,6 +161,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
                   icon: Icon(Icons.map_outlined),
                   selectedIcon: Icon(Icons.map),
                   label: 'Map',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.forum_outlined),
+                  selectedIcon: Icon(Icons.forum),
+                  label: 'Groups',
                 ),
               ],
             ),

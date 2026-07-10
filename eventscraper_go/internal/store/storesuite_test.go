@@ -264,6 +264,110 @@ func runStoreSuite(t *testing.T, newStore func(t *testing.T) Store) {
 			t.Errorf("RequireCoords total = %d err=%v, want 3", total, err)
 		}
 	})
+
+	t.Run("chat users/groups/membership/messages", func(t *testing.T) {
+		st := newStore(t)
+		ctx := context.Background()
+
+		jorge := ChatUser{ID: "u1", Name: "Jorge", Token: "tok-jorge", CreatedAt: base}
+		ana := ChatUser{ID: "u2", Name: "Ana", Token: "tok-ana", CreatedAt: base}
+		for _, u := range []ChatUser{jorge, ana} {
+			if err := st.CreateChatUser(ctx, u); err != nil {
+				t.Fatalf("CreateChatUser(%s): %v", u.Name, err)
+			}
+		}
+		got, ok, err := st.GetChatUserByToken(ctx, "tok-jorge")
+		if err != nil || !ok || got.ID != "u1" || got.Name != "Jorge" {
+			t.Fatalf("GetChatUserByToken: ok=%v err=%v got=%+v", ok, err, got)
+		}
+		if _, ok, err := st.GetChatUserByToken(ctx, "nope"); ok || err != nil {
+			t.Errorf("bad token: ok=%v err=%v", ok, err)
+		}
+
+		g := ChatGroup{ID: "g1", Type: "private", Name: "crew", InviteCode: "ABC234", CreatedBy: "u1", CreatedAt: base}
+		if err := st.CreateGroup(ctx, g); err != nil {
+			t.Fatalf("CreateGroup: %v", err)
+		}
+		byInvite, ok, err := st.GetGroupByInvite(ctx, "ABC234")
+		if err != nil || !ok || byInvite.ID != "g1" {
+			t.Fatalf("GetGroupByInvite: ok=%v err=%v got=%+v", ok, err, byInvite)
+		}
+
+		// Event room: get-or-create must return the same group on a second
+		// call with a different candidate id (the concurrent-join race).
+		ev := ChatGroup{ID: "g2", Type: "event", EventID: "ev1", Name: "Jazz Night", CreatedAt: base}
+		first, err := st.GetOrCreateEventGroup(ctx, ev)
+		if err != nil || first.ID != "g2" {
+			t.Fatalf("GetOrCreateEventGroup first: err=%v got=%+v", err, first)
+		}
+		ev2 := ChatGroup{ID: "g3-other", Type: "event", EventID: "ev1", Name: "Jazz Night", CreatedAt: base}
+		second, err := st.GetOrCreateEventGroup(ctx, ev2)
+		if err != nil || second.ID != "g2" {
+			t.Fatalf("GetOrCreateEventGroup second: err=%v got=%+v (want existing g2)", err, second)
+		}
+
+		added, err := st.JoinGroup(ctx, "g1", "u1")
+		if err != nil || !added {
+			t.Fatalf("JoinGroup first: added=%v err=%v", added, err)
+		}
+		added, err = st.JoinGroup(ctx, "g1", "u1")
+		if err != nil || added {
+			t.Fatalf("JoinGroup repeat: added=%v err=%v (want idempotent false)", added, err)
+		}
+		if _, err := st.JoinGroup(ctx, "g1", "u2"); err != nil {
+			t.Fatalf("JoinGroup ana: %v", err)
+		}
+		if m, err := st.IsMember(ctx, "g1", "u1"); err != nil || !m {
+			t.Errorf("IsMember u1: m=%v err=%v", m, err)
+		}
+		if m, err := st.IsMember(ctx, "g1", "u3"); err != nil || m {
+			t.Errorf("IsMember stranger: m=%v err=%v", m, err)
+		}
+
+		var lastID int64
+		for i, body := range []string{"hello", "anyone here?", "on my way"} {
+			id, err := st.InsertChatMessage(ctx, ChatMessage{
+				GroupID: "g1", UserID: "u1", Kind: "text", Body: body,
+				CreatedAt: base.Add(time.Duration(i) * time.Minute),
+			})
+			if err != nil {
+				t.Fatalf("InsertChatMessage(%q): %v", body, err)
+			}
+			if id <= lastID {
+				t.Fatalf("message ids not monotonic: %d after %d", id, lastID)
+			}
+			lastID = id
+		}
+		msgs, err := st.ListChatMessages(ctx, "g1", 0, 2)
+		if err != nil || len(msgs) != 2 {
+			t.Fatalf("ListChatMessages page1: len=%d err=%v", len(msgs), err)
+		}
+		if msgs[0].Body != "on my way" || msgs[0].UserName != "Jorge" {
+			t.Errorf("newest first with joined name, got %+v", msgs[0])
+		}
+		older, err := st.ListChatMessages(ctx, "g1", msgs[1].ID, 50)
+		if err != nil || len(older) != 1 || older[0].Body != "hello" {
+			t.Fatalf("cursor page: len=%d err=%v", len(older), err)
+		}
+
+		groups, err := st.ListGroupsForUser(ctx, "u2")
+		if err != nil || len(groups) != 1 {
+			t.Fatalf("ListGroupsForUser: len=%d err=%v", len(groups), err)
+		}
+		if groups[0].MemberCount != 2 || groups[0].LastMsgBody != "on my way" {
+			t.Errorf("group summary = %+v, want 2 members and last message", groups[0])
+		}
+
+		if err := st.LeaveGroup(ctx, "g1", "u2"); err != nil {
+			t.Fatalf("LeaveGroup: %v", err)
+		}
+		if m, _ := st.IsMember(ctx, "g1", "u2"); m {
+			t.Errorf("still member after leave")
+		}
+		if groups, _ := st.ListGroupsForUser(ctx, "u2"); len(groups) != 0 {
+			t.Errorf("groups after leave = %d, want 0", len(groups))
+		}
+	})
 }
 
 func TestStoreSuite_SQLite(t *testing.T) {

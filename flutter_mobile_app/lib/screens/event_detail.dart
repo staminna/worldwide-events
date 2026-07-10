@@ -1,17 +1,21 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/event_api.dart';
 import '../models/event.dart';
+import '../state/chat.dart';
+import '../state/chat_identity.dart';
 import '../state/poster_color.dart';
 import '../state/providers.dart';
 import '../util/calendar.dart';
 import '../util/geo.dart';
 import '../widgets/category_style.dart';
+import '../widgets/chat_name_prompt.dart';
 import '../widgets/directions_buttons.dart';
 import '../widgets/save_button.dart';
 import 'image_viewer.dart';
@@ -39,6 +43,27 @@ class _EventDetailView extends ConsumerWidget {
   const _EventDetailView({required this.event});
 
   final Event event;
+
+  /// Joins (lazily creating) the event's public chat room and opens it.
+  /// First touch also registers the anonymous chat identity.
+  Future<void> _openEventChat(BuildContext context, WidgetRef ref) async {
+    if (!await ensureChatIdentity(context, ref)) return;
+    if (!context.mounted) return;
+    try {
+      final group = await ref.read(chatApiProvider).joinEventRoom(event.id);
+      ref.invalidate(groupsProvider);
+      ref.read(chatConnectionProvider)
+        ..ensureConnected()
+        ..subscribeGroup(group.id);
+      if (context.mounted) context.push('/group/${group.id}', extra: group);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the event chat')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -102,6 +127,15 @@ class _EventDetailView extends ConsumerWidget {
                   ),
                   const SizedBox(height: 10),
                 ],
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    icon: const Icon(Icons.forum_outlined),
+                    label: const Text('Event chat'),
+                    onPressed: () => _openEventChat(context, ref),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(

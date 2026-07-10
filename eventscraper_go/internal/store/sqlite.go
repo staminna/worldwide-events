@@ -86,7 +86,10 @@ func (s *SQLite) Init(ctx context.Context) error {
 			}
 		}
 	}
-	_, err = s.db.ExecContext(ctx, schema)
+	if _, err = s.db.ExecContext(ctx, schema); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, chatSchemaSQLite)
 	return err
 }
 

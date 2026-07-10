@@ -41,6 +41,44 @@ type ScrapeStatus struct {
 	ErrMessage string
 }
 
+// ChatUser is an anonymous chat identity: a server-issued id plus an opaque
+// bearer token. There are no passwords — possession of the token is the
+// identity.
+type ChatUser struct {
+	ID        string
+	Name      string
+	Token     string
+	CreatedAt time.Time
+}
+
+// ChatGroup is a chat room: either the public room of an event
+// (Type "event", EventID set) or a private invite-code group
+// (Type "private", InviteCode set).
+type ChatGroup struct {
+	ID          string
+	Type        string // "event" | "private"
+	EventID     string // set when Type == "event"
+	Name        string
+	InviteCode  string // set when Type == "private"
+	CreatedBy   string
+	CreatedAt   time.Time
+	MemberCount int       // filled by ListGroupsForUser
+	LastMsgBody string    // filled by ListGroupsForUser; empty if no messages
+	LastMsgAt   time.Time // zero if no messages
+}
+
+// ChatMessage is a persisted group message. Location fixes are never stored;
+// only "text" and "system" kinds reach this table.
+type ChatMessage struct {
+	ID        int64
+	GroupID   string
+	UserID    string
+	UserName  string // joined from chat_users on read; not stored
+	Kind      string // "text" | "system"
+	Body      string
+	CreatedAt time.Time
+}
+
 type Store interface {
 	Init(ctx context.Context) error
 	UpsertEvents(ctx context.Context, events []model.Event) error
@@ -65,5 +103,28 @@ type Store interface {
 	// SetVenueAddressIfEmpty patches the stored event's venue.address only
 	// when it is currently empty. Returns whether a row was changed.
 	SetVenueAddressIfEmpty(ctx context.Context, eventID, addr string) (bool, error)
+
+	// --- chat ---
+	CreateChatUser(ctx context.Context, u ChatUser) error
+	GetChatUserByToken(ctx context.Context, token string) (ChatUser, bool, error)
+	CreateGroup(ctx context.Context, g ChatGroup) error
+	GetGroup(ctx context.Context, id string) (ChatGroup, bool, error)
+	GetGroupByInvite(ctx context.Context, code string) (ChatGroup, bool, error)
+	// GetOrCreateEventGroup returns the event's room, creating it when it
+	// doesn't exist yet. Safe under concurrent callers (insert-or-ignore on
+	// the unique event_id index, then read back).
+	GetOrCreateEventGroup(ctx context.Context, g ChatGroup) (ChatGroup, error)
+	// JoinGroup adds the user to the group; idempotent. Reports whether a
+	// membership row was actually created (false = was already a member).
+	JoinGroup(ctx context.Context, groupID, userID string) (bool, error)
+	LeaveGroup(ctx context.Context, groupID, userID string) error
+	IsMember(ctx context.Context, groupID, userID string) (bool, error)
+	ListGroupsForUser(ctx context.Context, userID string) ([]ChatGroup, error)
+	InsertChatMessage(ctx context.Context, m ChatMessage) (int64, error)
+	// ListChatMessages returns up to limit messages of a group, newest
+	// first. beforeID = 0 means "from the latest"; otherwise only messages
+	// with id < beforeID are returned (pagination cursor).
+	ListChatMessages(ctx context.Context, groupID string, beforeID int64, limit int) ([]ChatMessage, error)
+
 	Close() error
 }

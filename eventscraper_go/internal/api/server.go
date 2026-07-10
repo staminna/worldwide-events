@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/jorgenunes/eventscraper/internal/cache"
+	"github.com/jorgenunes/eventscraper/internal/chat"
 	"github.com/jorgenunes/eventscraper/internal/config"
 	"github.com/jorgenunes/eventscraper/internal/geo"
 	"github.com/jorgenunes/eventscraper/internal/geocode"
@@ -26,10 +27,11 @@ type Server struct {
 	scheduler *scheduler.Scheduler
 	geocoder  *geocode.Client
 	geoSF     *cache.SingleFlight
+	hub       *chat.Hub
 }
 
 func NewServer(cfg config.Config, st store.Store, cities *geo.Catalog, reg *scraper.Registry, sch *scheduler.Scheduler) *Server {
-	return &Server{
+	s := &Server{
 		cfg:       cfg,
 		store:     st,
 		cities:    cities,
@@ -38,6 +40,19 @@ func NewServer(cfg config.Config, st store.Store, cities *geo.Catalog, reg *scra
 		geocoder:  geocode.New(),
 		geoSF:     cache.NewSingleFlight(),
 	}
+	// The hub only needs two store operations; injecting them as funcs keeps
+	// internal/chat store-free.
+	s.hub = chat.NewHub(
+		func(ctx context.Context, groupID, userID, body string) (int64, time.Time, error) {
+			now := time.Now()
+			id, err := st.InsertChatMessage(ctx, store.ChatMessage{
+				GroupID: groupID, UserID: userID, Kind: "text", Body: body, CreatedAt: now,
+			})
+			return id, now, err
+		},
+		st.IsMember,
+	)
+	return s
 }
 
 func (s *Server) Router() http.Handler {
@@ -45,28 +60,48 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Compress(5))
-	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(corsMiddleware(s.cfg.AllowedOrigin))
 
-	r.Get("/healthz", s.handleHealthz)
-	r.Get("/cities", s.handleCities)
-	r.Get("/geo/reverse", s.handleGeoReverse)
-	r.Get("/geo/address", s.handleGeoAddress)
-	r.Get("/geo/search", s.handleGeoSearch)
-	r.Get("/events.geojson", s.handleEventsGeoJSON)
-	r.Get("/viz", s.handleViz)
-	// Ops surface — private, gated by ADMIN_TOKEN (see requireAdmin).
-	r.Get("/runs", s.requireAdmin(s.handleRuns))
-	r.Get("/runs.json", s.requireAdmin(s.handleRunsJSON))
-	r.Get("/sources", s.handleSources)
-	r.Get("/events", s.handleEvents)
-	r.Get("/events/{id}", s.handleEvent)
-	r.Post("/events", s.handleCreateEvent)
-	r.Post("/upload", s.handleUpload)
-	r.Get("/uploads/{name}", s.handleUploadServe)
-	r.Get("/img", s.handleImg)
-	r.Post("/refresh", s.requireAdmin(s.handleRefresh))
+	// The chat WebSocket must stay OUTSIDE the Timeout and Compress
+	// middlewares below: Timeout cancels the request context after 30s,
+	// which would kill the long-lived connection, and Compress wraps the
+	// ResponseWriter in a writer that doesn't implement http.Hijacker,
+	// which would break the upgrade. Don't move this route into the group.
+	r.Get("/chat/ws", s.handleChatWS)
+
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.Compress(5))
+		r.Use(middleware.Timeout(30 * time.Second))
+
+		r.Get("/healthz", s.handleHealthz)
+		r.Get("/cities", s.handleCities)
+		r.Get("/geo/reverse", s.handleGeoReverse)
+		r.Get("/geo/address", s.handleGeoAddress)
+		r.Get("/geo/search", s.handleGeoSearch)
+		r.Get("/events.geojson", s.handleEventsGeoJSON)
+		r.Get("/viz", s.handleViz)
+		// Ops surface — private, gated by ADMIN_TOKEN (see requireAdmin).
+		r.Get("/runs", s.requireAdmin(s.handleRuns))
+		r.Get("/runs.json", s.requireAdmin(s.handleRunsJSON))
+		r.Get("/sources", s.handleSources)
+		r.Get("/events", s.handleEvents)
+		r.Get("/events/{id}", s.handleEvent)
+		r.Post("/events", s.handleCreateEvent)
+		r.Post("/upload", s.handleUpload)
+		r.Get("/uploads/{name}", s.handleUploadServe)
+		r.Get("/img", s.handleImg)
+		r.Post("/refresh", s.requireAdmin(s.handleRefresh))
+
+		// Chat REST — short requests, so the Timeout middleware is fine.
+		r.Post("/chat/register", s.handleChatRegister)
+		r.Get("/chat/groups", s.requireChatUser(s.handleChatMyGroups))
+		r.Post("/chat/groups", s.requireChatUser(s.handleChatCreateGroup))
+		r.Post("/chat/groups/join", s.requireChatUser(s.handleChatJoinByCode))
+		r.Post("/chat/events/{id}/join", s.requireChatUser(s.handleChatJoinEventRoom))
+		r.Post("/chat/groups/{id}/leave", s.requireChatUser(s.handleChatLeaveGroup))
+		r.Get("/chat/groups/{id}/messages", s.requireChatUser(s.handleChatMessages))
+		r.Post("/chat/groups/{id}/messages", s.requireChatUser(s.handleChatSendMessage))
+	})
 	return r
 }
 

@@ -81,6 +81,49 @@ Response envelope: `{ "data": [...], "meta": { "total": N, "cached": bool, "age"
 `/events` sends an `ETag` derived from `(maxScrapedAt, total)`; clients that pass
 `If-None-Match` get a `304`.
 
+### Chat & live location
+
+Anonymous identities: `POST /chat/register {"name":"…"}` returns `{id, name, token}`;
+the opaque token is the bearer for everything below (no passwords, possession is
+the identity). Groups are either the public room of an event (created lazily on
+first join) or private invite-code groups.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/chat/register` | Create an identity; returns the bearer token |
+| GET | `/chat/groups` | My groups (member count, last message) |
+| POST | `/chat/groups` | Create a private group; returns its 6-char `inviteCode` |
+| POST | `/chat/groups/join` | Join by `{"code":"…"}` |
+| POST | `/chat/events/{id}/join` | Join (get-or-create) an event's public room |
+| POST | `/chat/groups/{id}/leave` | Leave a group |
+| GET | `/chat/groups/{id}/messages?before=…&limit=…` | History, newest first; `before` is a message id cursor |
+| POST | `/chat/groups/{id}/messages` | Send over HTTP (fallback; fans out to live sockets too) |
+| GET | `/chat/ws?token=…` | WebSocket: live messages, presence, and location shares for all my groups |
+
+The socket multiplexes every group with JSON envelopes discriminated by `type`
+(`message`, `location`, `location_stop`, `sub`, `presence`, `join`, `leave`,
+`error`). Location shares are **ephemeral** — kept only in server memory, swept
+after 2 min without a fix (clients heartbeat every 20 s) and hard-capped at 3 h;
+nothing is ever written to the DB. Message sends are rate-limited per connection
+(1/s, burst 5) and capped at 2000 chars.
+
+**Deploying behind nginx** (the reverse proxy on the host must upgrade the WS
+path; everything else is unchanged):
+
+```nginx
+location /eventscraper/chat/ws {
+    proxy_pass http://127.0.0.1:8090/chat/ws;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 90s;  # > the server's 30s ping interval
+    proxy_send_timeout 90s;
+}
+```
+
+Smoke test: `websocat "wss://api.iamjorgenunes.com/eventscraper/chat/ws?token=…"`.
+
 ## Running the Flutter app
 
 ```bash
