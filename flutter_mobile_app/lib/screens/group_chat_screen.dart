@@ -304,7 +304,26 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                   currentUserId: identity.id,
                   chatController: _controller,
                   resolveUser: (id) async => flyer.User(id: id, name: _names[id]),
-                  theme: flyer.ChatTheme.fromThemeData(theme),
+                  // Harmonized with the rest of the app: seed-purple own
+                  // bubbles (same accent as the nav pill and map peer UI),
+                  // received bubbles on the app's dark container tones, and
+                  // the 16px radius the map cards use. fromThemeData would
+                  // pick the dark-mode pale-lavender primary instead.
+                  theme: flyer.ChatTheme(
+                    colors: flyer.ChatColors(
+                      primary: const Color(0xFF6750A4),
+                      onPrimary: Colors.white,
+                      surface: theme.colorScheme.surface,
+                      onSurface: theme.colorScheme.onSurface,
+                      surfaceContainerLow:
+                          theme.colorScheme.surfaceContainerLow,
+                      surfaceContainer: theme.colorScheme.surfaceContainerHigh,
+                      surfaceContainerHigh:
+                          theme.colorScheme.surfaceContainerHighest,
+                    ),
+                    typography: flyer.ChatTypography.fromThemeData(theme),
+                    shape: BorderRadius.circular(16),
+                  ),
                   onMessageSend: (text) => ref
                       .read(groupMessagesProvider(widget.groupId).notifier)
                       .sendText(text),
@@ -353,7 +372,9 @@ class _SharingFriendsStrip extends ConsumerWidget {
 
     return Container(
       width: double.infinity,
-      color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+      // Same container tone family as the received bubbles below, so
+      // appbar → strip → conversation reads as one surface stack.
+      color: cs.surfaceContainerLow,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,

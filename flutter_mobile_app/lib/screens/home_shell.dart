@@ -148,67 +148,67 @@ class _HomeShellState extends ConsumerState<HomeShell>
       ),
       bottomNavigationBar: fullscreen
           ? null
-          : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
+          : Container(
+              // Full-width white bar with rounded top corners, sitting above
+              // the system footer/gesture area (SafeArea keeps the tabs clear
+              // of it while the white surface extends underneath).
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 18,
+                    offset: const Offset(0, -4),
                   ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: SafeArea(
+                top: false,
+                child: GNav(
+                  selectedIndex: _index,
+                  onTabChange: (i) => setState(() {
+                    _index = i;
+                    if (i == 1) _mapVisited = true;
+                  }),
+                  gap: 8,
+                  color: Colors.black54,
+                  activeColor: Colors.white,
+                  rippleColor: Colors.black12,
+                  // Fixed seed purple: matches the app's accent everywhere
+                  // (map peer pills, chat bubbles) regardless of theme mode.
+                  tabBackgroundColor: const Color(0xFF6750A4),
+                  tabBorderRadius: 18,
+                  iconSize: 22,
+                  duration: const Duration(milliseconds: 250),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
+                    horizontal: 18,
+                    vertical: 12,
                   ),
-                  child: GNav(
-                    selectedIndex: _index,
-                    onTabChange: (i) => setState(() {
-                      _index = i;
-                      if (i == 1) _mapVisited = true;
-                    }),
-                    gap: 8,
-                    color: Colors.white60,
-                    activeColor: Colors.white,
-                    // Fixed seed purple: the theme's dark-mode primary is a
-                    // pale lavender that washes out white text on black.
-                    tabBackgroundColor: const Color(0xFF6750A4),
-                    tabBorderRadius: 20,
-                    iconSize: 22,
-                    duration: const Duration(milliseconds: 250),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
+                  tabs: [
+                    const GButton(
+                      icon: Icons.view_agenda_outlined,
+                      text: 'Feed',
                     ),
-                    tabs: [
-                      const GButton(
-                        icon: Icons.view_agenda_outlined,
-                        text: 'Feed',
-                      ),
-                      const GButton(icon: Icons.map_outlined, text: 'Map'),
-                      GButton(
-                        icon: Icons.forum_outlined,
-                        text: 'Groups',
-                        // leading replaces the icon, so mirror the active
-                        // state colors GNav would apply itself.
-                        leading: Badge(
-                          isLabelVisible: unread,
-                          smallSize: 8,
-                          child: Icon(
-                            Icons.forum_outlined,
-                            size: 22,
-                            color: _index == 2 ? Colors.white : Colors.white60,
-                          ),
+                    const GButton(icon: Icons.map_outlined, text: 'Map'),
+                    GButton(
+                      icon: Icons.forum_outlined,
+                      text: 'Groups',
+                      // leading replaces the icon, so mirror the active
+                      // state colors GNav would apply itself.
+                      leading: Badge(
+                        isLabelVisible: unread,
+                        smallSize: 8,
+                        child: Icon(
+                          Icons.forum_outlined,
+                          size: 22,
+                          color: _index == 2 ? Colors.white : Colors.black54,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
