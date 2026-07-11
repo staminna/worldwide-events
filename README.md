@@ -32,6 +32,7 @@ Hetzner behind nginx; container binds `127.0.0.1:8090` on the host).
 | Chat REST | `…/chat/register`, `…/chat/groups*`, `…/chat/events/{id}/join` | per-user bearer token | Anonymous identities, groups, invite codes, message history. |
 | Chat WebSocket | `wss://…/chat/ws?token=<token>` | per-user token (query param) | Live messages, presence, and location shares for all your groups on one socket. |
 | Invite landing | `…/join/{code}` | none | Shareable invite link: shows the group name + code, instructions, and an `eventscraper://` deep link into the app. |
+| App download | [`…/app`](https://api.iamjorgenunes.com/eventscraper/app) | none | Shareable get-the-app page: direct Android `.apk` download (stored on the Hetzner data volume — ship a new build by copying it to `/data/uploads/eventscraper.apk`), iOS TestFlight note. |
 | **Chat admin UI** | [`…/chat/admin`](https://api.iamjorgenunes.com/eventscraper/chat/admin) | `ADMIN_TOKEN` | Manage chat **users and groups** — see below. |
 | Events viz | [`…/viz`](https://api.iamjorgenunes.com/eventscraper/viz) | none | Embedded kepler.gl map of the whole feed. |
 | Scrape runs | `…/runs`, `…/runs.json` | `ADMIN_TOKEN` | Live scrape dashboard. Browsers can't send bearer headers on navigation — consume via the MCP `scrape_status` tool or `curl`. |

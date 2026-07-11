@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../api/event_api.dart' show kApiBase;
 import '../models/chat.dart';
 import '../state/chat.dart';
 import '../state/chat_identity.dart';
@@ -131,6 +133,15 @@ class _GroupsScreenState extends ConsumerState<GroupsScreen> {
       appBar: AppBar(
         title: const Text('Groups'),
         actions: [
+          IconButton(
+            tooltip: 'Share the app',
+            icon: const Icon(Icons.ios_share),
+            onPressed: () => SharePlus.instance.share(ShareParams(
+              subject: 'Get Worldwide Events',
+              text: 'Get Worldwide Events — events, maps, group chat and '
+                  'friend finding:\n$kApiBase/app',
+            )),
+          ),
           if (identity.identity != null)
             Padding(
               padding: const EdgeInsets.only(right: 16),
