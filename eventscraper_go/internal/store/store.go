@@ -67,6 +67,14 @@ type ChatGroup struct {
 	LastMsgAt   time.Time // zero if no messages
 }
 
+// ChatUserAdmin is the ops view of a chat user: identity plus activity
+// counts. The token stays server-side — admin responses never serialize it.
+type ChatUserAdmin struct {
+	ChatUser
+	GroupCount   int
+	MessageCount int
+}
+
 // ChatMessage is a persisted group message. Location fixes are never stored;
 // only "text" and "system" kinds reach this table.
 type ChatMessage struct {
@@ -125,6 +133,15 @@ type Store interface {
 	// first. beforeID = 0 means "from the latest"; otherwise only messages
 	// with id < beforeID are returned (pagination cursor).
 	ListChatMessages(ctx context.Context, groupID string, beforeID int64, limit int) ([]ChatMessage, error)
+
+	// --- chat admin (ops surface, gated by ADMIN_TOKEN at the API layer) ---
+	ListChatUsers(ctx context.Context) ([]ChatUserAdmin, error)
+	ListAllGroups(ctx context.Context) ([]ChatGroup, error)
+	// DeleteChatUser removes the user (revoking its token) and its
+	// memberships. Messages are kept; their author renders as "?".
+	DeleteChatUser(ctx context.Context, id string) error
+	// DeleteChatGroup removes the group, its memberships, and its messages.
+	DeleteChatGroup(ctx context.Context, id string) error
 
 	Close() error
 }

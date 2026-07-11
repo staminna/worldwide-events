@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat admin — eventscraper</title>
+<style>
+  :root {
+    --bg: #101216; --panel: #181b21; --line: #262b33;
+    --text: #e6e9ee; --dim: #8b93a1; --accent: #7c6cf0;
+    --danger: #e5484d; --ok: #46a758;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .spacer { flex: 1; }
+  input[type="password"] {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 10px; width: 280px; font: inherit;
+  }
+  button {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 14px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.danger { color: var(--danger); }
+  button.danger:hover { border-color: var(--danger); }
+  #status { color: var(--dim); font-size: 13px; }
+  #status.err { color: var(--danger); }
+  main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+  section { margin-bottom: 32px; }
+  h2 { font-size: 14px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+  td.dim { color: var(--dim); }
+  .pill {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 12px; border: 1px solid var(--line); color: var(--dim);
+  }
+  .pill.event { color: var(--ok); border-color: var(--ok); }
+  .pill.private { color: var(--accent); border-color: var(--accent); }
+  code { background: var(--bg); padding: 1px 6px; border-radius: 6px; font-size: 12px; }
+  .empty { padding: 18px; color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Chat admin</h1>
+  <span class="spacer"></span>
+  <input id="token" type="password" placeholder="ADMIN_TOKEN" autocomplete="off">
+  <button id="load">Load</button>
+  <span id="status"></span>
+</header>
+<main>
+  <section>
+    <h2>Users <span id="ucount" class="pill"></span></h2>
+    <div class="card"><table id="users">
+      <thead><tr><th>Name</th><th>ID</th><th>Created</th><th>Groups</th><th>Messages</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table><div class="empty" id="uempty" hidden>No users.</div></div>
+  </section>
+  <section>
+    <h2>Groups <span id="gcount" class="pill"></span></h2>
+    <div class="card"><table id="groups">
+      <thead><tr><th>Name</th><th>Type</th><th>Invite</th><th>Members</th><th>Last message</th><th>Last activity</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table><div class="empty" id="gempty" hidden>No groups.</div></div>
+  </section>
+</main>
+<script>
+// Relative URLs on purpose: the page must work both at /chat/admin and
+// behind the reverse-proxy prefix (/eventscraper/chat/admin).
+const $ = (s) => document.querySelector(s);
+const tokenInput = $("#token");
+tokenInput.value = localStorage.getItem("chat_admin_token") || "";
+
+function authHeaders() {
+  const t = tokenInput.value.trim();
+  localStorage.setItem("chat_admin_token", t);
+  return t ? { Authorization: "Bearer " + t } : {};
+}
+
+function setStatus(msg, isErr) {
+  const el = $("#status");
+  el.textContent = msg;
+  el.className = isErr ? "err" : "";
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function fmtTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d) ? "—" : d.toLocaleString();
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, { ...opts, headers: { ...authHeaders(), ...(opts && opts.headers) } });
+  if (res.status === 401) throw new Error("unauthorized — check the ADMIN_TOKEN");
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
+async function load() {
+  setStatus("loading…");
+  try {
+    const body = await api("chat/admin/data");
+    render(body.data);
+    setStatus("loaded " + new Date().toLocaleTimeString());
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+}
+
+function render(data) {
+  const users = data.users || [];
+  const groups = data.groups || [];
+  $("#ucount").textContent = users.length;
+  $("#gcount").textContent = groups.length;
+  $("#uempty").hidden = users.length > 0;
+  $("#gempty").hidden = groups.length > 0;
+
+  $("#users tbody").innerHTML = users.map((u) => `
+    <tr>
+      <td>${esc(u.name)}</td>
+      <td class="dim"><code>${esc(u.id)}</code></td>
+      <td class="dim">${fmtTime(u.createdAt)}</td>
+      <td>${u.groupCount}</td>
+      <td>${u.messageCount}</td>
+      <td><button class="danger" data-del-user="${esc(u.id)}" data-name="${esc(u.name)}">Delete</button></td>
+    </tr>`).join("");
+
+  $("#groups tbody").innerHTML = groups.map((g) => `
+    <tr>
+      <td>${esc(g.name)}</td>
+      <td><span class="pill ${esc(g.type)}">${esc(g.type)}</span></td>
+      <td class="dim">${g.inviteCode ? "<code>" + esc(g.inviteCode) + "</code>" : "—"}</td>
+      <td>${g.memberCount}</td>
+      <td class="dim">${esc(g.lastMessage || "—")}</td>
+      <td class="dim">${fmtTime(g.lastMessageAt || g.createdAt)}</td>
+      <td><button class="danger" data-del-group="${esc(g.id)}" data-name="${esc(g.name)}">Delete</button></td>
+    </tr>`).join("");
+}
+
+document.addEventListener("click", async (ev) => {
+  const btn = ev.target.closest("button");
+  if (!btn) return;
+  const userId = btn.dataset.delUser, groupId = btn.dataset.delGroup;
+  if (!userId && !groupId) return;
+  const kind = userId ? "user" : "group";
+  if (!confirm(`Delete ${kind} "${btn.dataset.name}"? ${kind === "group" ? "All its messages are removed." : "Their messages stay, shown as “?”."}`)) return;
+  try {
+    const id = encodeURIComponent(userId || groupId);
+    await api(`chat/admin/${kind}s/${id}/delete`, { method: "POST" });
+    load();
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+});
+
+$("#load").addEventListener("click", load);
+tokenInput.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
+if (tokenInput.value) load();
+</script>
+</body>
+</html>

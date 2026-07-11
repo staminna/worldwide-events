@@ -101,6 +101,13 @@ func (s *Server) Router() http.Handler {
 		r.Post("/chat/groups/{id}/leave", s.requireChatUser(s.handleChatLeaveGroup))
 		r.Get("/chat/groups/{id}/messages", s.requireChatUser(s.handleChatMessages))
 		r.Post("/chat/groups/{id}/messages", s.requireChatUser(s.handleChatSendMessage))
+
+		// Chat admin console: the page is public (holds no data); the data
+		// and delete actions are ADMIN_TOKEN-gated.
+		r.Get("/chat/admin", s.handleChatAdmin)
+		r.Get("/chat/admin/data", s.requireAdmin(s.handleChatAdminData))
+		r.Post("/chat/admin/users/{id}/delete", s.requireAdmin(s.handleChatAdminDeleteUser))
+		r.Post("/chat/admin/groups/{id}/delete", s.requireAdmin(s.handleChatAdminDeleteGroup))
 	})
 	return r
 }

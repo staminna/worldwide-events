@@ -189,6 +189,115 @@ func TestChatEndToEnd(t *testing.T) {
 	}
 }
 
+func TestChatAdmin(t *testing.T) {
+	st := newTestStore(t)
+	s := NewServer(config.Config{AllowedOrigin: "*", AdminToken: "secret"}, st, nil, nil, nil)
+	ts := httptest.NewServer(s.Router())
+	defer ts.Close()
+
+	_, jorgeTok := register(t, ts, "Jorge")
+	group := chatPost(t, ts, "/chat/groups", jorgeTok, `{"name":"crew"}`)
+	gid := group["id"].(string)
+	chatPost(t, ts, "/chat/groups/"+gid+"/messages", jorgeTok, `{"body":"hello"}`)
+
+	adminGet := func(token string) *http.Response {
+		req, _ := http.NewRequest("GET", ts.URL+"/chat/admin/data", nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("GET admin data: %v", err)
+		}
+		return resp
+	}
+
+	// Gate: no token and wrong token are rejected; a chat user token is not
+	// an admin token.
+	for _, tok := range []string{"", "wrong", jorgeTok} {
+		resp := adminGet(tok)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("admin data with token %q: status %d, want 401", tok, resp.StatusCode)
+		}
+	}
+
+	resp := adminGet("secret")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin data: status %d", resp.StatusCode)
+	}
+	var body struct {
+		Data struct {
+			Users []struct {
+				ID           string `json:"id"`
+				Name         string `json:"name"`
+				MessageCount int    `json:"messageCount"`
+			} `json:"users"`
+			Groups []struct {
+				ID string `json:"id"`
+			} `json:"groups"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Data.Users) != 1 || len(body.Data.Groups) != 1 {
+		t.Fatalf("admin data = %d users / %d groups, want 1/1", len(body.Data.Users), len(body.Data.Groups))
+	}
+	// system "joined" + the text message
+	if body.Data.Users[0].MessageCount != 2 {
+		t.Errorf("messageCount = %d, want 2", body.Data.Users[0].MessageCount)
+	}
+
+	// The raw response must never leak bearer tokens.
+	raw, _ := json.Marshal(body)
+	if strings.Contains(string(raw), jorgeTok) {
+		t.Fatalf("admin response leaked a user token")
+	}
+
+	// Delete the group, then the user, through the admin surface.
+	del := func(path string) {
+		req, _ := http.NewRequest("POST", ts.URL+path, nil)
+		req.Header.Set("Authorization", "Bearer secret")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("POST %s: status %d", path, resp.StatusCode)
+		}
+	}
+	del("/chat/admin/groups/" + gid + "/delete")
+	del("/chat/admin/users/" + body.Data.Users[0].ID + "/delete")
+
+	resp2 := adminGet("secret")
+	defer resp2.Body.Close()
+	var after struct {
+		Data struct {
+			Users  []any `json:"users"`
+			Groups []any `json:"groups"`
+		} `json:"data"`
+	}
+	_ = json.NewDecoder(resp2.Body).Decode(&after)
+	if len(after.Data.Users) != 0 || len(after.Data.Groups) != 0 {
+		t.Fatalf("after deletes: %d users / %d groups, want 0/0", len(after.Data.Users), len(after.Data.Groups))
+	}
+
+	// The deleted user's token no longer authenticates.
+	req, _ := http.NewRequest("GET", ts.URL+"/chat/groups", nil)
+	req.Header.Set("Authorization", "Bearer "+jorgeTok)
+	resp3, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET groups: %v", err)
+	}
+	resp3.Body.Close()
+	if resp3.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("deleted user's token still works: status %d", resp3.StatusCode)
+	}
+}
+
 func TestChatEventRoom(t *testing.T) {
 	ts, srv := chatTestServer(t)
 	ev := locatedEvent(t, srv.store, "jazz-1", "lisbon", 38.72, -9.13)

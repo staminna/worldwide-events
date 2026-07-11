@@ -196,6 +196,82 @@ func (p *Postgres) InsertChatMessage(ctx context.Context, m ChatMessage) (int64,
 	return id, err
 }
 
+func (p *Postgres) ListChatUsers(ctx context.Context) ([]ChatUserAdmin, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT u.id, u.name, u.created_at,
+		       (SELECT COUNT(*) FROM chat_members m WHERE m.user_id = u.id),
+		       (SELECT COUNT(*) FROM chat_messages mm WHERE mm.user_id = u.id)
+		FROM chat_users u
+		ORDER BY u.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ChatUserAdmin
+	for rows.Next() {
+		var u ChatUserAdmin
+		var createdAt, groupCount, msgCount int64
+		if err := rows.Scan(&u.ID, &u.Name, &createdAt, &groupCount, &msgCount); err != nil {
+			return nil, err
+		}
+		u.GroupCount = int(groupCount)
+		u.MessageCount = int(msgCount)
+		u.CreatedAt = time.Unix(createdAt, 0)
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ListAllGroups(ctx context.Context) ([]ChatGroup, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT g.id, g.type, COALESCE(g.event_id,''), g.name, COALESCE(g.invite_code,''),
+		       g.created_by, g.created_at,
+		       (SELECT COUNT(*) FROM chat_members mc WHERE mc.group_id = g.id),
+		       COALESCE((SELECT body FROM chat_messages lm WHERE lm.group_id = g.id ORDER BY lm.id DESC LIMIT 1), ''),
+		       COALESCE((SELECT created_at FROM chat_messages lm WHERE lm.group_id = g.id ORDER BY lm.id DESC LIMIT 1), 0)
+		FROM chat_groups g
+		ORDER BY g.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ChatGroup
+	for rows.Next() {
+		var g ChatGroup
+		var createdAt, lastMsgAt, memberCount int64
+		if err := rows.Scan(&g.ID, &g.Type, &g.EventID, &g.Name, &g.InviteCode,
+			&g.CreatedBy, &createdAt, &memberCount, &g.LastMsgBody, &lastMsgAt); err != nil {
+			return nil, err
+		}
+		g.MemberCount = int(memberCount)
+		g.CreatedAt = time.Unix(createdAt, 0)
+		if lastMsgAt > 0 {
+			g.LastMsgAt = time.Unix(lastMsgAt, 0)
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) DeleteChatUser(ctx context.Context, id string) error {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM chat_members WHERE user_id = $1`, id); err != nil {
+		return err
+	}
+	_, err := p.pool.Exec(ctx, `DELETE FROM chat_users WHERE id = $1`, id)
+	return err
+}
+
+func (p *Postgres) DeleteChatGroup(ctx context.Context, id string) error {
+	if _, err := p.pool.Exec(ctx, `DELETE FROM chat_messages WHERE group_id = $1`, id); err != nil {
+		return err
+	}
+	if _, err := p.pool.Exec(ctx, `DELETE FROM chat_members WHERE group_id = $1`, id); err != nil {
+		return err
+	}
+	_, err := p.pool.Exec(ctx, `DELETE FROM chat_groups WHERE id = $1`, id)
+	return err
+}
+
 func (p *Postgres) ListChatMessages(ctx context.Context, groupID string, beforeID int64, limit int) ([]ChatMessage, error) {
 	rows, err := p.pool.Query(ctx, `
 		SELECT m.id, m.group_id, m.user_id, COALESCE(u.name, '?'), m.kind, m.body, m.created_at

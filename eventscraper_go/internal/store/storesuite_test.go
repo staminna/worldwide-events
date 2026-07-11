@@ -367,6 +367,50 @@ func runStoreSuite(t *testing.T, newStore func(t *testing.T) Store) {
 		if groups, _ := st.ListGroupsForUser(ctx, "u2"); len(groups) != 0 {
 			t.Errorf("groups after leave = %d, want 0", len(groups))
 		}
+
+		// Admin surface: list everything, then delete.
+		admins, err := st.ListChatUsers(ctx)
+		if err != nil || len(admins) != 2 {
+			t.Fatalf("ListChatUsers: len=%d err=%v", len(admins), err)
+		}
+		var jorgeAdmin ChatUserAdmin
+		for _, a := range admins {
+			if a.ID == "u1" {
+				jorgeAdmin = a
+			}
+		}
+		if jorgeAdmin.GroupCount != 1 || jorgeAdmin.MessageCount != 3 {
+			t.Errorf("jorge admin counts = %+v, want 1 group / 3 messages", jorgeAdmin)
+		}
+		all, err := st.ListAllGroups(ctx)
+		if err != nil || len(all) != 2 { // g1 + the ev1 event room
+			t.Fatalf("ListAllGroups: len=%d err=%v", len(all), err)
+		}
+
+		if err := st.DeleteChatUser(ctx, "u1"); err != nil {
+			t.Fatalf("DeleteChatUser: %v", err)
+		}
+		if _, ok, _ := st.GetChatUserByToken(ctx, "tok-jorge"); ok {
+			t.Errorf("token still valid after user delete")
+		}
+		// Messages survive a user delete, author renders as "?".
+		msgs, _ = st.ListChatMessages(ctx, "g1", 0, 10)
+		if len(msgs) != 3 || msgs[0].UserName != "?" {
+			t.Errorf("messages after user delete: len=%d name=%q, want 3 / ?", len(msgs), msgs[0].UserName)
+		}
+
+		if err := st.DeleteChatGroup(ctx, "g1"); err != nil {
+			t.Fatalf("DeleteChatGroup: %v", err)
+		}
+		if msgs, _ := st.ListChatMessages(ctx, "g1", 0, 10); len(msgs) != 0 {
+			t.Errorf("messages survived group delete: %d", len(msgs))
+		}
+		if _, ok, _ := st.GetGroup(ctx, "g1"); ok {
+			t.Errorf("group still present after delete")
+		}
+		if all, _ := st.ListAllGroups(ctx); len(all) != 1 {
+			t.Errorf("groups after delete = %d, want 1", len(all))
+		}
 	})
 }
 

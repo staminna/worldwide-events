@@ -213,6 +213,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                 preferredSize: const Size.fromHeight(32),
                 child: Container(
                   height: 32,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   color: theme.colorScheme.tertiaryContainer,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -220,12 +221,20 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                       Icon(Icons.podcasts,
                           size: 16, color: theme.colorScheme.onTertiaryContainer),
                       const SizedBox(width: 8),
-                      Text(
-                        'Live location on — group members see you on the map',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onTertiaryContainer),
+                      Flexible(
+                        child: Text(
+                          'Live location on — visible to this group',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onTertiaryContainer),
+                        ),
                       ),
                       TextButton(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
                         onPressed: () =>
                             ref.read(locationShareProvider.notifier).stop(widget.groupId),
                         child: const Text('Stop'),

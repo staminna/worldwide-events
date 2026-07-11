@@ -1,181 +1,177 @@
 # Worldwide Events
 
-+1500 Tech, Business, Music & Culture events
++1500 Tech, Business, Music & Culture events — with group chat and live
+location sharing between friends.
 
-A Multiplatform app built with Go and Flutter for browsing upcoming events from across the world, pulled from
-license-free sources only.
+A multiplatform app built with Go and Flutter for browsing upcoming events
+from across the world, pulled from license-free sources only.
 
 ![Application Screenshot](images/Main.png)
 ![Application Screenshot](images/Event_details.png)
 
-- **`eventscraper/`** — Go backend. Scrapes Eventbrite, Songkick and Luma,
-  caches everything in SQLite with TTL-based stale-while-revalidate, exposes a
-  JSON HTTP API, and includes an image-proxy that fixes CORS / hotlinking /
-  missing Content-Type problems on the public CDNs.
-- **`eventscraper_app/`** — Flutter client (iOS / Android / Web).
-  Responsive 1 / 2 / 3-column grid, persistent search, filter sheet (city,
-  category, source, date range), interactive OpenStreetMap view of every
-  geocoded event, and a polished event detail screen.
+- **`eventscraper_go/`** — Go backend. Scrapes Eventbrite, Songkick, Luma and
+  viralagenda, caches everything in SQLite (or Postgres/PostGIS) with
+  TTL-based stale-while-revalidate, exposes a JSON HTTP API, a WebSocket chat
+  hub with ephemeral live-location sharing, an image proxy, and embedded ops
+  dashboards. Full endpoint docs: [`eventscraper_go/README.md`](eventscraper_go/README.md).
+- **`flutter_mobile_app/`** — Flutter client (iOS / Android / Web). Feed, map
+  (MapLibre) and Groups tabs, filters, event detail, group chat with per-event
+  public rooms + private invite-code groups, and live friend positions on the
+  map.
 
-## Prerequisites
+## Services — how to access each one
 
-| Tool    | Version          | Install                                          |
-|---------|------------------|--------------------------------------------------|
-| Go      | 1.22 or newer    | https://go.dev/dl/ (or `brew install go`)        |
-| Flutter | 3.41 or newer    | https://docs.flutter.dev/get-started/install     |
-| Chrome  | any recent       | for `flutter run -d chrome`                      |
-| SQLite  | bundled (`modernc.org/sqlite`, no CGO required)             |
+Production base: **`https://api.iamjorgenunes.com/eventscraper`** (Docker on
+Hetzner behind nginx; container binds `127.0.0.1:8090` on the host).
 
-No API keys, accounts, or paid services are required to run the default
-configuration.
+| Service | URL (production) | Auth | What it is |
+|---|---|---|---|
+| Events API | `…/events`, `…/events/{id}`, `…/cities`, `…/sources`, `…/geo/*`, `…/events.geojson` | none | Read API the app consumes. Filters: `city, category, source, from, to, q, limit, offset`. |
+| Event submission | `POST …/events`, `POST …/upload` | none | User-created events + cover-image upload (served from `…/uploads/{name}`). |
+| Image proxy | `…/img?u=<url>` | none | CORS-friendly proxy for upstream CDNs. |
+| Chat REST | `…/chat/register`, `…/chat/groups*`, `…/chat/events/{id}/join` | per-user bearer token | Anonymous identities, groups, invite codes, message history. |
+| Chat WebSocket | `wss://…/chat/ws?token=<token>` | per-user token (query param) | Live messages, presence, and location shares for all your groups on one socket. |
+| **Chat admin UI** | [`…/chat/admin`](https://api.iamjorgenunes.com/eventscraper/chat/admin) | `ADMIN_TOKEN` | Manage chat **users and groups** — see below. |
+| Events viz | [`…/viz`](https://api.iamjorgenunes.com/eventscraper/viz) | none | Embedded kepler.gl map of the whole feed. |
+| Scrape runs | `…/runs`, `…/runs.json` | `ADMIN_TOKEN` | Live scrape dashboard. Browsers can't send bearer headers on navigation — consume via the MCP `scrape_status` tool or `curl`. |
+| Health | `…/healthz` | none | Liveness probe. |
 
-## Quick start
+Every JSON endpoint answers with the envelope
+`{"data": …, "meta": {"total": N, …}}`.
+
+### API quickstart (events)
+
+```bash
+BASE=https://api.iamjorgenunes.com/eventscraper
+curl "$BASE/healthz"
+curl "$BASE/events?city=lisbon&category=music&limit=5"
+curl "$BASE/events.geojson" | jq '.features | length'
+```
+
+### API quickstart (chat)
+
+Identity is anonymous: register once, keep the opaque token — possession of
+the token *is* the identity.
+
+```bash
+# 1. Register → {id, name, token}
+TOKEN=$(curl -s -X POST $BASE/chat/register -d '{"name":"Jorge"}' \
+        | jq -r .data.token)
+
+# 2. Create a private group → note the 6-char inviteCode
+curl -s -X POST $BASE/chat/groups -H "Authorization: Bearer $TOKEN" \
+     -d '{"name":"night crew"}' | jq .data
+
+# 3. A friend joins with the code
+curl -s -X POST $BASE/chat/groups/join -H "Authorization: Bearer $FRIEND_TOKEN" \
+     -d '{"code":"ABC234"}'
+
+# 4. Send + read messages (HTTP fallback; the app uses the WebSocket)
+curl -s -X POST $BASE/chat/groups/$GROUP_ID/messages \
+     -H "Authorization: Bearer $TOKEN" -d '{"body":"on my way"}'
+curl -s "$BASE/chat/groups/$GROUP_ID/messages?limit=50" \
+     -H "Authorization: Bearer $TOKEN"
+
+# 5. Live socket (websocat) — JSON envelopes typed by "type":
+#    message | location | location_stop | sub | presence | join | leave | error
+websocat "wss://api.iamjorgenunes.com/eventscraper/chat/ws?token=$TOKEN"
+```
+
+Event rooms are created lazily: `POST $BASE/chat/events/{eventId}/join`
+returns the event's public room (creating it on first join).
+
+## Managing the backend
+
+### Chat admin UI (users & groups)
+
+Open **`https://api.iamjorgenunes.com/eventscraper/chat/admin`** in a browser,
+paste the `ADMIN_TOKEN` (from `~/eventscraper/.env` on the VPS; stored in the
+browser's localStorage after first use) and hit **Load**. You get:
+
+- **Users** — name, id, created date, group + message counts, and **Delete**
+  (revokes the token and removes memberships; their past messages remain,
+  attributed to "?").
+- **Groups** — name, type (event/private), invite code, member count, last
+  activity, and **Delete** (removes the group with all its messages).
+
+Locally the same page is at `http://localhost:8080/chat/admin`; with
+`ADMIN_TOKEN` unset (dev default) the gate is open and the token field can be
+left empty.
+
+### Ops endpoints & scrape control
+
+- `POST …/refresh?source=…&city=…` (ADMIN_TOKEN) — force a re-scrape.
+- `…/runs.json` (ADMIN_TOKEN) — live scrape-run snapshot; surfaced in Claude
+  Desktop via the MCP `scrape_status` tool (`eventscraper mcp`).
+- Location shares are **never stored** — they live in server memory with a
+  2-minute staleness sweep and a 3-hour cap, and reset on restart.
+
+### Deploying
+
+The VPS never builds images (disk). From a laptop:
+
+```bash
+cd eventscraper_go
+docker buildx build --platform linux/amd64 -t eventscraper:latest --load .
+docker save eventscraper:latest | gzip | \
+  ssh hetzner 'gunzip | docker load && cd ~/eventscraper && docker compose up -d --force-recreate'
+```
+
+nginx on the host proxies `/eventscraper/` → `127.0.0.1:8090` and has a
+dedicated `location /eventscraper/chat/ws` block with WebSocket `Upgrade`
+headers (see "Chat & live location" in `eventscraper_go/README.md`).
+
+## Local development
 
 Two terminals.
 
-### Terminal 1 — backend
-
 ```bash
-cd eventscraper
+# Terminal 1 — backend (SQLite by default; set DATABASE_URL for Postgres/PostGIS)
+cd eventscraper_go
 cp .env.example .env          # optional, all defaults work
 go run ./cmd/eventscraper serve
 ```
 
-The first cold start kicks off a background warm-up that scrapes all 160+
-configured cities across all three free sources. You can use the API
-immediately — events appear in the cache as the warm-up progresses, and the
-Flutter app auto-polls until they show up.
-
-Verify it's up:
-
 ```bash
-curl http://localhost:8080/healthz
-curl 'http://localhost:8080/events?limit=3' | jq .
-```
-
-### Terminal 2 — Flutter app
-
-```bash
-cd eventscraper_app
+# Terminal 2 — Flutter app
+cd flutter_mobile_app
 flutter pub get
 flutter run -d chrome --dart-define=API_BASE=http://localhost:8080
 ```
 
-For native targets, use `-d ios`, `-d android`, or `-d macos`. When testing on
-a mobile device against your laptop, point `API_BASE` at your LAN IP, e.g.
-`--dart-define=API_BASE=http://192.168.1.10:8080`.
+For native targets use `-d ios` / `-d android`. Testing on a phone against
+your laptop: point `API_BASE` at your LAN IP. To try chat, run two
+devices/simulators — messages, presence, and map dots update live.
 
-## Configuration
+Key environment variables (full list in `eventscraper_go/.env.example`):
 
-All configuration is environment-variable based — see `eventscraper/.env.example`.
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `8080` | HTTP listen port |
+| `DB_PATH` | `./eventscraper.db` | SQLite file (used when `DATABASE_URL` is unset) |
+| `DATABASE_URL` | unset | `postgres://…` switches the store to Postgres/PostGIS |
+| `CITIES_PATH` | `./configs/cities.yaml` | City catalog |
+| `ALLOWED_ORIGIN` | `*` | CORS allow-origin |
+| `ADMIN_TOKEN` | unset | Gates `/refresh`, `/runs*`, and the chat admin endpoints (open when unset — local dev only) |
+| `UPLOAD_DIR` | `./uploads` | User-uploaded cover images |
 
-| Variable               | Default                          | Purpose                                                    |
-|------------------------|----------------------------------|------------------------------------------------------------|
-| `PORT`                 | `8080`                           | HTTP listen port                                           |
-| `DB_PATH`              | `./eventscraper.db`              | SQLite file                                                |
-| `CITIES_PATH`          | `./configs/cities.yaml`          | City catalog                                               |
-| `ALLOWED_ORIGIN`       | `*`                              | CORS allow-origin                                          |
-| `WARMUP_CITIES`        | `0` (= all 160+)                 | How many cities to warm up on startup                      |
-| `FREE_ONLY`            | `true`                           | When `false`, also registers Ticketmaster / Meetup         |
-| `TICKETMASTER_API_KEY` | unset                            | Required if you flip `FREE_ONLY=false` and want TM         |
-| `MEETUP_OAUTH_TOKEN`   | unset                            | Required if you want Meetup (paid OAuth client needed)     |
-| `ADMIN_TOKEN`          | unset                            | When set, `POST /refresh` requires `Authorization: Bearer` |
-
-## CLI
-
-```bash
-go run ./cmd/eventscraper serve                                   # default: HTTP API
-go run ./cmd/eventscraper list cities
-go run ./cmd/eventscraper list sources
-go run ./cmd/eventscraper scrape --source eventbrite --city berlin
-go run ./cmd/eventscraper scrape --source luma       --city paris --category tech
-go run ./cmd/eventscraper scrape --source songkick   --city london --category music
-```
-
-A one-shot `scrape` writes events to the same SQLite DB that `serve` reads, so
-you can pre-populate the cache before starting the server.
-
-## HTTP API
-
-| Method | Path               | Description                                                                 |
-|--------|--------------------|-----------------------------------------------------------------------------|
-| GET    | `/healthz`         | Liveness                                                                    |
-| GET    | `/cities`          | Configured cities                                                           |
-| GET    | `/sources`         | Source registration + last scrape per (source, city)                        |
-| GET    | `/events`          | Filterable list. Params: `city, category, source, from, to, q, limit, offset` |
-|        |                    | Sorted by start date (soonest first). Finished events are hidden by default; pass `from` to browse history. |
-| GET    | `/events/{id}`     | Single event                                                                |
-| GET    | `/img?u=<url>`     | CORS-friendly image proxy (used by the Flutter client)                      |
-| POST   | `/refresh`         | Force re-scrape. Gated by `ADMIN_TOKEN` if set.                             |
-
-Response envelope: `{"data": [...], "meta": {"total": N, "cached": bool, "age": "12m", "limit": L, "offset": O}}`.
-`/events` sends an `ETag` derived from `(maxScrapedAt, total)`; clients passing
-`If-None-Match` get a `304`.
-
-## Project layout
-
-```
-2026/go/
-├── eventscraper/                       Go backend
-│   ├── cmd/eventscraper/main.go        CLI entry (cobra)
-│   ├── internal/
-│   │   ├── api/                        chi router, handlers, image proxy
-│   │   ├── cache/                      TTL helpers + single-flight
-│   │   ├── config/                     env parsing
-│   │   ├── enrich/                     og:image / twitter:image backfill
-│   │   ├── geo/                        cities catalog loader
-│   │   ├── model/                      canonical Event, Source, Category
-│   │   ├── scheduler/                  warm-up + Run + MaybeRefresh
-│   │   ├── scraper/                    Eventbrite, Songkick, Luma,
-│   │   │                                Ticketmaster, Meetup
-│   │   └── store/                      SQLite store
-│   ├── configs/cities.yaml             80 cities incl. all EU capitals
-│   ├── .env.example
-│   └── README.md
-│
-└── eventscraper_app/                   Flutter client
-    ├── lib/
-    │   ├── main.dart                   ProviderScope + GoRouter
-    │   ├── models/event.dart           canonical types
-    │   ├── api/event_api.dart          dio client + proxiedImage()
-    │   ├── state/providers.dart        riverpod providers
-    │   ├── screens/
-    │   │   ├── home_shell.dart         NavigationBar: Feed / Map
-    │   │   ├── home_screen.dart        responsive grid + search bar
-    │   │   ├── filters_sheet.dart      city / cat / source / date range
-    │   │   ├── map_screen.dart         flutter_map (OSM)
-    │   │   └── event_detail.dart       hero + mini map
-    │   └── widgets/event_card.dart
-    └── pubspec.yaml
-```
-
-## What changes when
-
-- The catalog of cities lives in `eventscraper/configs/cities.yaml`. Add a new
-  city by appending an entry with `id`, `name`, `country`, `lat`, `lon`,
-  `eventbrite_slug`, `songkick_metro`, `luma_city_slug`. Restart the server.
-- Scrape recipes live in `eventscraper/internal/scraper/*.go`. Eventbrite reads
-  `window.__SERVER_DATA__`; Songkick walks HTML cards; Luma hits the public
-  `api.lu.ma/discover/get-paginated-events` JSON endpoint.
-- Image enrichment runs after every scrape and on the CLI `scrape` command.
-  Known placeholder URLs (`default-event`, `default_images`, `placeholder`,
-  `no-image`) are rejected and stripped from the DB on every server start.
+Tests: `go test ./...` in `eventscraper_go/` (the store suite runs against
+SQLite and, when a test `DATABASE_URL` is available, Postgres);
+`flutter test` and `flutter analyze` in `flutter_mobile_app/`.
 
 ## Troubleshooting
 
-- **The feed shows "Building your feed…" for too long.** Tail the server log;
-  warming all 80 cities takes 5–12 minutes on a first cold start. Reduce with
-  `WARMUP_CITIES=10`.
-- **Flutter Web shows broken images.** Make sure you launched with
-  `--dart-define=API_BASE=…`. The Flutter client routes every image through
-  the backend's `/img?u=` proxy to fix CORS; if it points at the wrong host
-  the proxy isn't reachable.
-- **CAPTCHA / 403 from Eventbrite or Songkick.** Both sites occasionally block
-  bot-shaped traffic. The scraper returns `ErrBlocked` and marks the scrape
-  status accordingly; the cache keeps serving the last good results. Retry
-  later or run the scraper from a residential connection.
-- **Resetting the cache.** Stop the server, delete `eventscraper.db`, restart.
-  Or call `POST /refresh?source=…&city=…` to refresh a single (source, city).
+- **Feed shows "Building your feed…" for a long time** — first cold start
+  warms 160+ cities (5–12 min). Reduce with `WARMUP_CITIES=10`.
+- **Broken images on Flutter Web** — launch with `--dart-define=API_BASE=…`;
+  images route through the backend `/img?u=` proxy.
+- **Chat connects but nothing arrives in production** — verify the nginx
+  WebSocket block: `websocat "wss://…/chat/ws?token=…"` must answer; plain
+  `curl` needs `--http1.1` for the 101 handshake (HTTP/2 can't Upgrade).
+- **CAPTCHA / 403 from a source** — the scraper marks the run blocked and the
+  cache keeps serving the last good results.
+- **Reset the cache** — stop the server and delete `eventscraper.db`, or
+  `POST /refresh` per (source, city).
 
 ## Licensing of upstream data
 

@@ -215,6 +215,79 @@ func (s *SQLite) ListChatMessages(ctx context.Context, groupID string, beforeID 
 	return scanChatMessages(rows)
 }
 
+func (s *SQLite) ListChatUsers(ctx context.Context) ([]ChatUserAdmin, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT u.id, u.name, u.created_at,
+		       (SELECT COUNT(*) FROM chat_members m WHERE m.user_id = u.id),
+		       (SELECT COUNT(*) FROM chat_messages mm WHERE mm.user_id = u.id)
+		FROM chat_users u
+		ORDER BY u.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ChatUserAdmin
+	for rows.Next() {
+		var u ChatUserAdmin
+		var createdAt int64
+		if err := rows.Scan(&u.ID, &u.Name, &createdAt, &u.GroupCount, &u.MessageCount); err != nil {
+			return nil, err
+		}
+		u.CreatedAt = time.Unix(createdAt, 0)
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) ListAllGroups(ctx context.Context) ([]ChatGroup, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT g.id, g.type, COALESCE(g.event_id,''), g.name, COALESCE(g.invite_code,''),
+		       g.created_by, g.created_at,
+		       (SELECT COUNT(*) FROM chat_members mc WHERE mc.group_id = g.id),
+		       COALESCE((SELECT body FROM chat_messages lm WHERE lm.group_id = g.id ORDER BY lm.id DESC LIMIT 1), ''),
+		       COALESCE((SELECT created_at FROM chat_messages lm WHERE lm.group_id = g.id ORDER BY lm.id DESC LIMIT 1), 0)
+		FROM chat_groups g
+		ORDER BY g.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ChatGroup
+	for rows.Next() {
+		var g ChatGroup
+		var createdAt, lastMsgAt int64
+		if err := rows.Scan(&g.ID, &g.Type, &g.EventID, &g.Name, &g.InviteCode,
+			&g.CreatedBy, &createdAt, &g.MemberCount, &g.LastMsgBody, &lastMsgAt); err != nil {
+			return nil, err
+		}
+		g.CreatedAt = time.Unix(createdAt, 0)
+		if lastMsgAt > 0 {
+			g.LastMsgAt = time.Unix(lastMsgAt, 0)
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) DeleteChatUser(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM chat_members WHERE user_id = ?`, id); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM chat_users WHERE id = ?`, id)
+	return err
+}
+
+func (s *SQLite) DeleteChatGroup(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM chat_messages WHERE group_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM chat_members WHERE group_id = ?`, id); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM chat_groups WHERE id = ?`, id)
+	return err
+}
+
 // scanChatMessages consumes a rows cursor produced by the shared message
 // SELECT column order (works for both database/sql via this file and any
 // identical projection).
