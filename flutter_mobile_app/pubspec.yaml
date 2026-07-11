@@ -28,6 +28,7 @@ dependencies:
   flutter_chat_ui: ^2.11.1
   flutter_chat_core: ^2.9.0
   share_plus: ^13.2.0
+  google_nav_bar: ^5.0.7
 
 dev_dependencies:
   flutter_test:

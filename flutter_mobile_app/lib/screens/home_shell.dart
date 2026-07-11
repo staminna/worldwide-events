@@ -6,8 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../state/follows.dart';
 import '../state/location.dart';
 import '../state/providers.dart';
-import '../state/unread.dart';
 import '../util/notifications.dart';
+import '../widgets/app_nav_bar.dart';
 import 'groups_screen.dart';
 import 'home_screen.dart';
 import 'map_screen.dart';
@@ -21,7 +21,6 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell>
     with WidgetsBindingObserver {
-  int _index = 0;
   // The map hosts a native GL PlatformView — don't spin it up at app boot
   // (or in widget tests); build it the first time the tab is opened, then
   // keep it alive so camera/selection survive tab switches.
@@ -135,10 +134,13 @@ class _HomeShellState extends ConsumerState<HomeShell>
   Widget build(BuildContext context) {
     // The map's immersive fullscreen hides the bottom nav.
     final fullscreen = ref.watch(mapFullscreenProvider);
-    final unread = ref.watch(hasAnyUnreadProvider);
+    final index = ref.watch(shellTabProvider);
+    // The tab can be switched from outside the shell (the chat screen hosts
+    // the same nav bar), so the map-visited latch tracks the provider.
+    if (index == 1) _mapVisited = true;
     return Scaffold(
       body: IndexedStack(
-        index: _index,
+        index: index,
         children: [
           const HomeScreen(),
           if (_mapVisited) const MapScreen() else const SizedBox.shrink(),
@@ -147,37 +149,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
       ),
       bottomNavigationBar: fullscreen
           ? null
-          : NavigationBar(
-              selectedIndex: _index,
-              onDestinationSelected: (i) => setState(() {
-                _index = i;
-                if (i == 1) _mapVisited = true;
-              }),
-              destinations: [
-                const NavigationDestination(
-                  icon: Icon(Icons.view_agenda_outlined),
-                  selectedIcon: Icon(Icons.view_agenda),
-                  label: 'Feed',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.map_outlined),
-                  selectedIcon: Icon(Icons.map),
-                  label: 'Map',
-                ),
-                NavigationDestination(
-                  icon: Badge(
-                    isLabelVisible: unread,
-                    smallSize: 8,
-                    child: const Icon(Icons.forum_outlined),
-                  ),
-                  selectedIcon: Badge(
-                    isLabelVisible: unread,
-                    smallSize: 8,
-                    child: const Icon(Icons.forum),
-                  ),
-                  label: 'Groups',
-                ),
-              ],
+          : AppNavBar(
+              onSelected: (i) {
+                if (i == 1) setState(() => _mapVisited = true);
+              },
             ),
     );
   }
