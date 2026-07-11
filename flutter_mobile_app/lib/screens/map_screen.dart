@@ -38,8 +38,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   MapLibreMapController? _controller;
   bool _styleReady = false;
   Event? _selected;
+  PeerFix? _selectedPeer;
   WalkRoute? _walkRoute;
   List<Event> _placed = const [];
+  // Peers currently on the map, parallel to the 'peers' source feature ids —
+  // same resolve-by-index scheme as _placed for event dots.
+  List<PeerFix> _placedPeers = const [];
   // Display coordinates parallel to _placed: events sharing a coordinate (a
   // city centroid) are fanned out into a ring so each is visible/tappable.
   List<LatLng> _placedPoints = const [];
@@ -143,8 +147,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
         Positioned(
           right: 12,
-          // Lift the button clear of the selected-event card when one shows.
-          bottom: _selected == null ? 16 : 196,
+          // Lift the button clear of the selection card when one shows.
+          bottom: (_selected == null && _selectedPeer == null) ? 16 : 196,
           child: FloatingActionButton.small(
             heroTag: 'map-locate',
             tooltip: 'My location',
@@ -229,6 +233,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               walkRoute: _walkRoute,
               onClose: _clearSelection,
               onOpen: () => context.push('/event/${_selected!.id}'),
+            ),
+          ),
+        if (_selectedPeer != null)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: _SelectedPeerCard(
+              peer: _selectedPeer!,
+              // Live distance from me; null until we have a fix.
+              distanceMeters: loc.hasFix
+                  ? haversineMeters(
+                      loc.lat!,
+                      loc.lon!,
+                      _selectedPeer!.lat,
+                      _selectedPeer!.lon,
+                    )
+                  : null,
+              walkRoute: _walkRoute,
+              onClose: _clearSelection,
             ),
           ),
       ],
@@ -465,7 +489,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
 
     // Friends sharing their live location (chat groups) — slightly larger
-    // than "me", tertiary-colored, with the person's name underneath.
+    // than "me", tertiary-colored, with the person's name underneath. The
+    // dot itself is tappable (select → distance card + walking route); the
+    // halo and label stay passive so they don't swallow the tap.
     await c.addCircleLayer(
       'peers',
       'peers-halo',
@@ -476,7 +502,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       'peers',
       'peers-dot',
       CircleLayerProperties(circleRadius: 7.5, circleColor: hexColor(cs.tertiary)),
-      enableInteraction: false,
     );
     await c.addSymbolLayer(
       'peers',
@@ -623,13 +648,35 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _syncPeersSource(Map<String, PeerFix> peers) {
     final c = _controller;
     if (c == null || !_styleReady) return;
+    _placedPeers = peers.values.toList()
+      ..sort((a, b) => a.userId.compareTo(b.userId));
     c.setGeoJsonSource(
       'peers',
       _fc([
-        for (final p in peers.values)
-          _pointFeature(p.lat, p.lon, properties: {'name': p.name}),
+        for (var i = 0; i < _placedPeers.length; i++)
+          _pointFeature(
+            _placedPeers[i].lat,
+            _placedPeers[i].lon,
+            id: i,
+            properties: {'name': _placedPeers[i].name},
+          ),
       ]),
     );
+    // Keep an open peer selection live: follow the moving dot, or drop the
+    // selection when they stop sharing.
+    final sel = _selectedPeer;
+    if (sel != null) {
+      final fresh = peers[sel.userId];
+      if (fresh == null) {
+        _clearSelection();
+      } else if (fresh != sel) {
+        setState(() => _selectedPeer = fresh);
+        c.setGeoJsonSource(
+          'selected',
+          _fc([_pointFeature(fresh.lat, fresh.lon)]),
+        );
+      }
+    }
   }
 
   // --- Selection & routing -------------------------------------------------
@@ -659,6 +706,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
       return;
     }
+    if (layerId == 'peers-dot') {
+      final idx = int.tryParse(id);
+      if (idx == null || idx < 0 || idx >= _placedPeers.length) return;
+      _selectPeer(_placedPeers[idx]);
+      return;
+    }
     if (layerId != 'event-dots') return;
     final idx = int.tryParse(id);
     if (idx == null || idx < 0 || idx >= _placed.length) return;
@@ -669,6 +722,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final point = at ?? _pointFor(e);
     setState(() {
       _selected = e;
+      _selectedPeer = null;
       _walkRoute = null;
     });
     final c = _controller;
@@ -680,10 +734,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _maybeFetchRoute(e);
   }
 
+  void _selectPeer(PeerFix p) {
+    setState(() {
+      _selectedPeer = p;
+      _selected = null;
+      _walkRoute = null;
+    });
+    final c = _controller;
+    c?.setGeoJsonSource('selected', _fc([_pointFeature(p.lat, p.lon)]));
+    c?.setGeoJsonSource('route', _fc([]));
+    _maybeFetchPeerRoute(p);
+  }
+
   void _clearSelection() {
-    if (_selected == null) return;
+    if (_selected == null && _selectedPeer == null) return;
     setState(() {
       _selected = null;
+      _selectedPeer = null;
       _walkRoute = null;
     });
     _controller?.setGeoJsonSource('selected', _fc([]));
@@ -708,6 +775,31 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
     // Guard against a stale response landing after the user moved on.
     if (!mounted || route == null || _selected?.id != e.id) return;
+    _controller?.setGeoJsonSource(
+      'route',
+      _fc([
+        {'type': 'Feature', 'properties': {}, 'geometry': route.geometry},
+      ]),
+    );
+    setState(() => _walkRoute = route);
+  }
+
+  // Friends can be a bit further out than event pins before a walking route
+  // stops being useful (the demo scatters them up to 3 km away).
+  static const _peerRouteMaxMeters = 6000.0;
+
+  Future<void> _maybeFetchPeerRoute(PeerFix p) async {
+    final loc = ref.read(locationProvider);
+    if (!loc.hasFix) return;
+    final meters = haversineMeters(loc.lat!, loc.lon!, p.lat, p.lon);
+    if (meters > _peerRouteMaxMeters) return;
+    final route = await fetchWalkingRoute(
+      fromLat: loc.lat!,
+      fromLon: loc.lon!,
+      toLat: p.lat,
+      toLon: p.lon,
+    );
+    if (!mounted || route == null || _selectedPeer?.userId != p.userId) return;
     _controller?.setGeoJsonSource(
       'route',
       _fc([
@@ -865,6 +957,88 @@ class _SelectedEventCard extends StatelessWidget {
               lat: event.venue.lat,
               lon: event.venue.lon,
               label: event.venue.name.isEmpty ? event.title : event.venue.name,
+              compact: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom card for a tapped friend dot: who it is, how far, how fresh their
+/// fix is, and how to get to them (in-map walking route + external maps).
+class _SelectedPeerCard extends StatelessWidget {
+  const _SelectedPeerCard({
+    required this.peer,
+    required this.distanceMeters,
+    required this.walkRoute,
+    required this.onClose,
+  });
+
+  final PeerFix peer;
+  final double? distanceMeters;
+  final WalkRoute? walkRoute;
+  final VoidCallback onClose;
+
+  String _distanceLabel() {
+    final d = distanceMeters;
+    if (d == null) return 'distance unknown';
+    if (d < 1000) return '${d.round()} m away';
+    return '${(d / 1000).toStringAsFixed(1)} km away';
+  }
+
+  String _freshness() {
+    final secs = DateTime.now().difference(peer.at).inSeconds;
+    if (secs < 45) return 'live';
+    if (secs < 120) return 'updated ${secs}s ago';
+    return 'updated ${(secs / 60).round()} min ago';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      elevation: 6,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(height: 4, color: cs.tertiary),
+          ListTile(
+            leading: CircleAvatar(
+              backgroundColor: cs.tertiaryContainer,
+              child: Text(
+                peer.name.isEmpty ? '?' : peer.name.characters.first.toUpperCase(),
+                style: TextStyle(
+                  color: cs.onTertiaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            title: Text(
+              peer.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              '${_distanceLabel()} • ${_freshness()}'
+              '${walkRoute != null ? '\n🚶 ${walkRoute!.walkLabel}' : ''}',
+            ),
+            isThreeLine: walkRoute != null,
+            trailing: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: onClose,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: DirectionsButtons(
+              lat: peer.lat,
+              lon: peer.lon,
+              label: peer.name,
               compact: true,
             ),
           ),
