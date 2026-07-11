@@ -47,7 +47,11 @@ class _JoinInviteScreenState extends ConsumerState<JoinInviteScreen> {
         ..ensureConnected()
         ..subscribeGroup(group.id);
       if (mounted) {
-        context.pushReplacement('/group/${group.id}', extra: group);
+        // Deep links replace the whole stack with this screen, so rebuild a
+        // sane one: home shell underneath, the group chat on top — Android
+        // back then returns into the app instead of exiting it.
+        context.go('/');
+        context.push('/group/${group.id}', extra: group);
       }
     } catch (_) {
       if (mounted) {

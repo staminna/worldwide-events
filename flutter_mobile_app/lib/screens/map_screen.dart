@@ -19,6 +19,7 @@ import '../util/geo.dart';
 import '../widgets/category_style.dart';
 import '../widgets/directions_buttons.dart';
 import '../widgets/location_search_field.dart';
+import 'friend_map_screen.dart';
 
 /// Beyond this straight-line distance we don't fetch a walking route — the
 /// deep-link buttons cover the "too far to walk" case.
@@ -253,6 +254,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   : null,
               walkRoute: _walkRoute,
               onClose: _clearSelection,
+              onNavigate: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => FriendMapScreen(peer: _selectedPeer!),
+                ),
+              ),
             ),
           ),
       ],
@@ -974,12 +980,14 @@ class _SelectedPeerCard extends StatelessWidget {
     required this.distanceMeters,
     required this.walkRoute,
     required this.onClose,
+    required this.onNavigate,
   });
 
   final PeerFix peer;
   final double? distanceMeters;
   final WalkRoute? walkRoute;
   final VoidCallback onClose;
+  final VoidCallback onNavigate;
 
   String _distanceLabel() {
     final d = distanceMeters;
@@ -1035,11 +1043,26 @@ class _SelectedPeerCard extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: DirectionsButtons(
-              lat: peer.lat,
-              lon: peer.lon,
-              label: peer.name,
-              compact: true,
+            child: Row(
+              children: [
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: onNavigate,
+                  icon: const Icon(Icons.navigation, size: 16),
+                  label: const Text('Navigate'),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DirectionsButtons(
+                    lat: peer.lat,
+                    lon: peer.lon,
+                    label: peer.name,
+                    compact: true,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

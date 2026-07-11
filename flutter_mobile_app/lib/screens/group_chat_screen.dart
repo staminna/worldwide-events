@@ -10,8 +10,11 @@ import '../api/event_api.dart' show kApiBase;
 import '../models/chat.dart';
 import '../state/chat.dart';
 import '../state/chat_identity.dart';
+import '../state/location.dart';
 import '../state/location_share.dart';
 import '../state/unread.dart';
+import '../util/geo.dart';
+import 'friend_map_screen.dart';
 
 /// One group's conversation. The flyer_chat Chat widget renders; our Riverpod
 /// GroupMessagesNotifier stays the single source of truth and is mirrored
@@ -279,11 +282,25 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
               )
             : null,
       ),
-      body: messagesState.loading && messagesState.messages.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : messagesState.error.isNotEmpty && messagesState.messages.isEmpty
-              ? Center(child: Text(messagesState.error))
-              : flyer_ui.Chat(
+      body: Column(
+        children: [
+          _SharingFriendsStrip(groupId: widget.groupId),
+          Expanded(child: _buildChat(messagesState, identity, theme)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChat(
+    GroupMessagesState messagesState,
+    ChatIdentity identity,
+    ThemeData theme,
+  ) {
+    return messagesState.loading && messagesState.messages.isEmpty
+        ? const Center(child: CircularProgressIndicator())
+        : messagesState.error.isNotEmpty && messagesState.messages.isEmpty
+            ? Center(child: Text(messagesState.error))
+            : flyer_ui.Chat(
                   currentUserId: identity.id,
                   chatController: _controller,
                   resolveUser: (id) async => flyer.User(id: id, name: _names[id]),
@@ -300,7 +317,65 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                           .loadOlder(),
                     ),
                   ),
+                );
+  }
+}
+
+/// A thin strip above the conversation listing this group's members who are
+/// sharing live location right now — tap one to get turn-by-turn guidance
+/// to them. Hidden when nobody shares.
+class _SharingFriendsStrip extends ConsumerWidget {
+  const _SharingFriendsStrip({required this.groupId});
+
+  final String groupId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selfId = ref.watch(chatIdentityProvider).identity?.id;
+    final loc = ref.watch(locationProvider);
+    final sharers = ref
+        .watch(peersProvider)
+        .values
+        .where((p) => p.groupId == groupId && p.userId != selfId)
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    if (sharers.isEmpty) return const SizedBox.shrink();
+
+    final cs = Theme.of(context).colorScheme;
+    String label(PeerFix p) {
+      if (!loc.hasFix) return p.name;
+      final d = haversineMeters(loc.lat!, loc.lon!, p.lat, p.lon);
+      final dist = d < 1000
+          ? '${d.round()} m'
+          : '${(d / 1000).toStringAsFixed(1)} km';
+      return '${p.name} · $dist';
+    }
+
+    return Container(
+      width: double.infinity,
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final p in sharers)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ActionChip(
+                  avatar: Icon(Icons.near_me, size: 16, color: cs.tertiary),
+                  label: Text(label(p)),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => FriendMapScreen(peer: p),
+                    ),
+                  ),
                 ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -137,7 +137,12 @@ class ChatConnection with WidgetsBindingObserver {
 
 final chatConnectionProvider = Provider<ChatConnection>((ref) {
   final conn = ChatConnection(ref);
-  // Reconnect (or connect late) when the identity appears.
+  // Connect right away when an identity already exists — e.g. a cold start
+  // straight to the Map tab, where peer dots need the socket but no chat
+  // surface ever calls ensureConnected.
+  if (ref.read(chatIdentityProvider).registered) conn.ensureConnected();
+  // And connect late when the identity appears (first registration, or the
+  // prefs load finishing after this provider was created).
   ref.listen(chatIdentityProvider, (prev, next) {
     if (next.identity != null) conn.ensureConnected();
   });
