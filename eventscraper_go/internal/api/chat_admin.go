@@ -2,7 +2,9 @@ package api
 
 import (
 	_ "embed"
+	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +23,33 @@ func (s *Server) handleChatAdmin(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(chatAdminHTML)
+}
+
+// The invite landing page turns a shared link into "here's the code + how to
+// use it" for people without the app in front of them. Public by design —
+// an invite code IS the shareable secret.
+//
+//go:embed static/join.html
+var joinHTML string
+
+var joinTmpl = template.Must(template.New("join").Parse(joinHTML))
+
+func (s *Server) handleJoinLanding(w http.ResponseWriter, r *http.Request) {
+	code := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "code")))
+	g, found, err := s.store.GetGroupByInvite(r.Context(), code)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if !found {
+		w.WriteHeader(http.StatusNotFound)
+	}
+	_ = joinTmpl.Execute(w, struct {
+		Found bool
+		Name  string
+		Code  string
+	}{Found: found, Name: g.Name, Code: code})
 }
 
 type chatUserAdminJSON struct {

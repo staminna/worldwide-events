@@ -8,6 +8,7 @@ import 'screens/agenda_screen.dart';
 import 'screens/event_detail.dart';
 import 'screens/group_chat_screen.dart';
 import 'screens/home_shell.dart';
+import 'screens/join_invite_screen.dart';
 
 void main() {
   runApp(const ProviderScope(child: EventScraperApp()));
@@ -29,6 +30,12 @@ final _router = GoRouter(
         groupId: state.pathParameters['id']!,
         group: state.extra as ChatGroup?,
       ),
+    ),
+    // Deep-link target for shared invites (eventscraper://app/join/CODE).
+    GoRoute(
+      path: '/join/:code',
+      builder: (_, state) =>
+          JoinInviteScreen(code: state.pathParameters['code']!),
     ),
   ],
 );

@@ -4,7 +4,9 @@ import 'package:flutter_chat_core/flutter_chat_core.dart' as flyer;
 import 'package:flutter_chat_ui/flutter_chat_ui.dart' as flyer_ui;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../api/event_api.dart' show kApiBase;
 import '../models/chat.dart';
 import '../state/chat.dart';
 import '../state/chat_identity.dart';
@@ -159,6 +161,19 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
     ));
   }
 
+  /// Opens the platform share sheet with the invite link (a public landing
+  /// page that shows the code + instructions, and deep-links back into the
+  /// app) plus the raw code for people who prefer typing it.
+  void _shareInvite(ChatGroup group) {
+    final code = group.inviteCode;
+    SharePlus.instance.share(ShareParams(
+      subject: 'Join "${group.name}" on Worldwide Events',
+      text: 'Join my group "${group.name}" on Worldwide Events!\n'
+          '$kApiBase/join/$code\n'
+          'Invite code: $code',
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final identity = ref.watch(chatIdentityProvider).identity;
@@ -210,16 +225,20 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
           ),
           if (!group.isEventRoom && group.inviteCode.isNotEmpty)
             IconButton(
-              tooltip: 'Copy invite code',
+              tooltip: 'Share invite',
               icon: const Icon(Icons.person_add_alt_outlined),
-              onPressed: () => _copyInvite(group),
+              onPressed: () => _shareInvite(group),
             ),
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'leave') _leave(group);
+              if (v == 'copy') _copyInvite(group);
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'leave', child: Text('Leave group')),
+            itemBuilder: (_) => [
+              if (!group.isEventRoom && group.inviteCode.isNotEmpty)
+                const PopupMenuItem(
+                    value: 'copy', child: Text('Copy invite code')),
+              const PopupMenuItem(value: 'leave', child: Text('Leave group')),
             ],
           ),
         ],

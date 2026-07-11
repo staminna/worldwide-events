@@ -68,5 +68,19 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Invite deep links: eventscraper://app/join/CODE -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.jorgenunes.eventscraper</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>eventscraper</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

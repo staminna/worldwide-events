@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Found}}Join {{.Name}} — Worldwide Events{{else}}Invite not found — Worldwide Events{{end}}</title>
+<style>
+  :root { --bg:#101216; --panel:#181b21; --line:#262b33; --text:#e6e9ee; --dim:#8b93a1; --accent:#7c6cf0; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:var(--bg); color:var(--text);
+    font:16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .card {
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:32px 28px; max-width:420px; width:calc(100% - 32px); text-align:center;
+  }
+  .emoji { font-size:40px; }
+  h1 { font-size:20px; margin:12px 0 4px; }
+  p { color:var(--dim); margin:8px 0 0; }
+  .code {
+    font:700 34px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing:.18em; margin:24px 0 6px; user-select:all;
+  }
+  .hint { font-size:13px; }
+  button, a.btn {
+    display:inline-block; margin-top:20px; padding:12px 22px; border-radius:10px;
+    border:1px solid var(--line); background:var(--accent); color:#fff;
+    font:600 15px/1 inherit; text-decoration:none; cursor:pointer;
+  }
+  button.ghost { background:transparent; color:var(--text); margin-left:8px; }
+  ol { text-align:left; color:var(--dim); font-size:14px; margin:20px auto 0; max-width:300px; padding-left:20px; }
+</style>
+</head>
+<body>
+<div class="card">
+{{if .Found}}
+  <div class="emoji">👋</div>
+  <h1>You're invited to “{{.Name}}”</h1>
+  <p>A group on Worldwide Events — chat and share live location with friends.</p>
+  <div class="code" id="code">{{.Code}}</div>
+  <div class="hint">your invite code</div>
+  <a class="btn" href="eventscraper://app/join/{{.Code}}">Open in the app</a>
+  <button class="ghost" onclick="navigator.clipboard.writeText('{{.Code}}');this.textContent='Copied!'">Copy code</button>
+  <ol>
+    <li>Open the <b>Worldwide Events</b> app</li>
+    <li>Go to <b>Groups → + → Join with a code</b></li>
+    <li>Enter the code above</li>
+  </ol>
+{{else}}
+  <div class="emoji">🤷</div>
+  <h1>Invite not found</h1>
+  <p>This invite code doesn't match any group — it may have been deleted, or the link is incomplete. Ask your friend for a fresh one.</p>
+{{end}}
+</div>
+</body>
+</html>

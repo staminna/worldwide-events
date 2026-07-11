@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -295,6 +296,42 @@ func TestChatAdmin(t *testing.T) {
 	resp3.Body.Close()
 	if resp3.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("deleted user's token still works: status %d", resp3.StatusCode)
+	}
+}
+
+func TestJoinLandingPage(t *testing.T) {
+	ts, _ := chatTestServer(t)
+	_, tok := register(t, ts, "Jorge")
+	group := chatPost(t, ts, "/chat/groups", tok, `{"name":"Sexta à noite"}`)
+	code := group["inviteCode"].(string)
+
+	get := func(path string) (int, string) {
+		resp, err := http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		var sb strings.Builder
+		_, _ = io.Copy(&sb, resp.Body)
+		return resp.StatusCode, sb.String()
+	}
+
+	// Known code renders the group name and the code (case-insensitive input).
+	status, body := get("/join/" + strings.ToLower(code))
+	if status != http.StatusOK {
+		t.Fatalf("landing status = %d", status)
+	}
+	if !strings.Contains(body, "Sexta à noite") || !strings.Contains(body, code) {
+		t.Fatalf("landing page missing group name or code:\n%s", body)
+	}
+	if !strings.Contains(body, "eventscraper://app/join/"+code) {
+		t.Errorf("landing page missing the deep link")
+	}
+
+	// Unknown code is a friendly 404.
+	status, body = get("/join/NOPE99")
+	if status != http.StatusNotFound || !strings.Contains(body, "Invite not found") {
+		t.Fatalf("unknown code: status=%d body=%q", status, body[:min(120, len(body))])
 	}
 }
 

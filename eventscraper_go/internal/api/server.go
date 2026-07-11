@@ -102,6 +102,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/chat/groups/{id}/messages", s.requireChatUser(s.handleChatMessages))
 		r.Post("/chat/groups/{id}/messages", s.requireChatUser(s.handleChatSendMessage))
 
+		// Invite landing page for shared links (public — the code is the
+		// shareable secret).
+		r.Get("/join/{code}", s.handleJoinLanding)
+
 		// Chat admin console: the page is public (holds no data); the data
 		// and delete actions are ADMIN_TOKEN-gated.
 		r.Get("/chat/admin", s.handleChatAdmin)
