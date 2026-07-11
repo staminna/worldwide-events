@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get Worldwide Events</title>
+<style>
+  :root { --bg:#101216; --panel:#181b21; --line:#262b33; --text:#e6e9ee; --dim:#8b93a1; --accent:#6750a4; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:var(--bg); color:var(--text);
+    font:16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .card {
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:32px 28px; max-width:440px; width:calc(100% - 32px); text-align:center;
+  }
+  .emoji { font-size:44px; }
+  h1 { font-size:22px; margin:12px 0 4px; }
+  p { color:var(--dim); margin:8px 0 0; }
+  .os { margin-top:24px; padding:18px; border:1px solid var(--line); border-radius:12px; text-align:left; }
+  .os h2 { font-size:15px; margin:0 0 6px; display:flex; align-items:center; gap:8px; }
+  .os p { font-size:13.5px; margin:4px 0 0; }
+  a.btn {
+    display:inline-block; margin-top:12px; padding:12px 22px; border-radius:10px;
+    background:var(--accent); color:#fff; font:600 15px/1 inherit; text-decoration:none;
+  }
+  .meta { font-size:12.5px; color:var(--dim); margin-top:8px; }
+  ol { color:var(--dim); font-size:13px; margin:10px 0 0; padding-left:18px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="emoji">🌍</div>
+  <h1>Worldwide Events</h1>
+  <p>+1500 events, live maps, group chat and friend finding.<br>Share this page — anyone can install from here.</p>
+
+  <div class="os">
+    <h2>🤖 Android</h2>
+    {{if .HasAPK}}
+    <a class="btn" href="app/android">Download the app (.apk)</a>
+    <div class="meta">{{.SizeMB}} MB · updated {{.Updated}}</div>
+    <ol>
+      <li>Open the downloaded file</li>
+      <li>Allow installs from your browser if asked</li>
+      <li>Open <b>Worldwide Events</b> 🎉</li>
+    </ol>
+    {{else}}
+    <p>The Android build isn't uploaded yet — check back soon.</p>
+    {{end}}
+  </div>
+
+  <div class="os">
+    <h2>🍎 iPhone / iPad</h2>
+    <p>The iOS build ships through TestFlight and isn't public yet.
+    Meanwhile, everything works from the browser too — just keep this
+    page's address handy.</p>
+  </div>
+</div>
+</body>
+</html>

@@ -106,6 +106,14 @@ func (s *Server) Router() http.Handler {
 		// shareable secret).
 		r.Get("/join/{code}", s.handleJoinLanding)
 
+		// App-download landing page + direct APK (public, shareable).
+		// HEAD is registered too: chi doesn't map it onto Get routes, and
+		// download managers + link-preview bots probe with HEAD first.
+		r.Get("/app", s.handleAppPage)
+		r.Head("/app", s.handleAppPage)
+		r.Get("/app/android", s.handleAppAndroid)
+		r.Head("/app/android", s.handleAppAndroid)
+
 		// Chat admin console: the page is public (holds no data); the data
 		// and delete actions are ADMIN_TOKEN-gated.
 		r.Get("/chat/admin", s.handleChatAdmin)
