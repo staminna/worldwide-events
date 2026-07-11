@@ -14,6 +14,7 @@ import '../state/location.dart';
 import '../state/location_share.dart';
 import '../state/unread.dart';
 import '../util/geo.dart';
+import '../widgets/app_nav_bar.dart';
 import 'friend_map_screen.dart';
 
 /// One group's conversation. The flyer_chat Chat widget renders; our Riverpod
@@ -49,6 +50,9 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
       ref.read(activeGroupProvider.notifier).state = widget.groupId;
       ref.read(unreadCountsProvider.notifier).clear(widget.groupId);
       ref.read(readMarksProvider.notifier).markRead(widget.groupId);
+      // A conversation belongs to the Groups tab — keep its pill active on
+      // the nav bar hosted below (matters when arriving via deep link).
+      ref.read(shellTabProvider.notifier).state = 2;
     });
   }
 
@@ -288,6 +292,12 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
           Expanded(child: _buildChat(messagesState, identity, theme)),
         ],
       ),
+      // The menu stays visible inside a conversation too; tapping a tab
+      // returns to the shell on that tab. Hidden while the keyboard is up
+      // so it never crowds the composer.
+      bottomNavigationBar: MediaQuery.viewInsetsOf(context).bottom > 0
+          ? null
+          : AppNavBar(onSelected: (_) => context.go('/')),
     );
   }
 
@@ -385,7 +395,15 @@ class _SharingFriendsStrip extends ConsumerWidget {
                 padding: const EdgeInsets.only(right: 8),
                 child: ActionChip(
                   avatar: Icon(Icons.near_me, size: 16, color: cs.tertiary),
-                  label: Text(label(p)),
+                  label: Text(
+                    label(p),
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  backgroundColor: cs.surfaceContainerHigh,
+                  side: BorderSide(color: cs.outlineVariant),
                   visualDensity: VisualDensity.compact,
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(

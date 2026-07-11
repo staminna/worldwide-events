@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_nav_bar/google_nav_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../state/follows.dart';
 import '../state/location.dart';
 import '../state/providers.dart';
-import '../state/unread.dart';
 import '../util/notifications.dart';
+import '../widgets/app_nav_bar.dart';
 import 'groups_screen.dart';
 import 'home_screen.dart';
 import 'map_screen.dart';
@@ -22,7 +21,6 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell>
     with WidgetsBindingObserver {
-  int _index = 0;
   // The map hosts a native GL PlatformView — don't spin it up at app boot
   // (or in widget tests); build it the first time the tab is opened, then
   // keep it alive so camera/selection survive tab switches.
@@ -136,10 +134,13 @@ class _HomeShellState extends ConsumerState<HomeShell>
   Widget build(BuildContext context) {
     // The map's immersive fullscreen hides the bottom nav.
     final fullscreen = ref.watch(mapFullscreenProvider);
-    final unread = ref.watch(hasAnyUnreadProvider);
+    final index = ref.watch(shellTabProvider);
+    // The tab can be switched from outside the shell (the chat screen hosts
+    // the same nav bar), so the map-visited latch tracks the provider.
+    if (index == 1) _mapVisited = true;
     return Scaffold(
       body: IndexedStack(
-        index: _index,
+        index: index,
         children: [
           const HomeScreen(),
           if (_mapVisited) const MapScreen() else const SizedBox.shrink(),
@@ -148,69 +149,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
       ),
       bottomNavigationBar: fullscreen
           ? null
-          : Container(
-              // Full-width white bar with rounded top corners, sitting above
-              // the system footer/gesture area (SafeArea keeps the tabs clear
-              // of it while the white surface extends underneath).
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(24)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    blurRadius: 18,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: SafeArea(
-                top: false,
-                child: GNav(
-                  selectedIndex: _index,
-                  onTabChange: (i) => setState(() {
-                    _index = i;
-                    if (i == 1) _mapVisited = true;
-                  }),
-                  gap: 8,
-                  color: Colors.black54,
-                  activeColor: Colors.white,
-                  rippleColor: Colors.black12,
-                  // Fixed seed purple: matches the app's accent everywhere
-                  // (map peer pills, chat bubbles) regardless of theme mode.
-                  tabBackgroundColor: const Color(0xFF6750A4),
-                  tabBorderRadius: 18,
-                  iconSize: 22,
-                  duration: const Duration(milliseconds: 250),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 12,
-                  ),
-                  tabs: [
-                    const GButton(
-                      icon: Icons.view_agenda_outlined,
-                      text: 'Feed',
-                    ),
-                    const GButton(icon: Icons.map_outlined, text: 'Map'),
-                    GButton(
-                      icon: Icons.forum_outlined,
-                      text: 'Groups',
-                      // leading replaces the icon, so mirror the active
-                      // state colors GNav would apply itself.
-                      leading: Badge(
-                        isLabelVisible: unread,
-                        smallSize: 8,
-                        child: Icon(
-                          Icons.forum_outlined,
-                          size: 22,
-                          color: _index == 2 ? Colors.white : Colors.black54,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          : AppNavBar(
+              onSelected: (i) {
+                if (i == 1) setState(() => _mapVisited = true);
+              },
             ),
     );
   }
