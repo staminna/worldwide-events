@@ -9,6 +9,7 @@ import '../models/chat.dart';
 import '../state/chat.dart';
 import '../state/chat_identity.dart';
 import '../state/location_share.dart';
+import '../state/unread.dart';
 
 /// One group's conversation. The flyer_chat Chat widget renders; our Riverpod
 /// GroupMessagesNotifier stays the single source of truth and is mirrored
@@ -37,10 +38,24 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
   void initState() {
     super.initState();
     ref.read(chatConnectionProvider).ensureConnected();
+    // Everything in this group counts as read while the screen is on top.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(activeGroupProvider.notifier).state = widget.groupId;
+      ref.read(unreadCountsProvider.notifier).clear(widget.groupId);
+      ref.read(readMarksProvider.notifier).markRead(widget.groupId);
+    });
   }
 
   @override
   void dispose() {
+    // Mark read again on the way out so messages that arrived while the
+    // screen was open don't resurface as unread.
+    if (ref.read(activeGroupProvider) == widget.groupId) {
+      ref.read(activeGroupProvider.notifier).state = null;
+    }
+    ref.read(unreadCountsProvider.notifier).clear(widget.groupId);
+    ref.read(readMarksProvider.notifier).markRead(widget.groupId);
     _controller.dispose();
     super.dispose();
   }

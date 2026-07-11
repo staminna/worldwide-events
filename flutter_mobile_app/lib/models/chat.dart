@@ -44,6 +44,18 @@ class ChatGroup {
 
   bool get isEventRoom => type == 'event';
 
+  ChatGroup copyWith({String? lastMessage, DateTime? lastMessageAt}) =>
+      ChatGroup(
+        id: id,
+        type: type,
+        name: name,
+        eventId: eventId,
+        inviteCode: inviteCode,
+        memberCount: memberCount,
+        lastMessage: lastMessage ?? this.lastMessage,
+        lastMessageAt: lastMessageAt ?? this.lastMessageAt,
+      );
+
   factory ChatGroup.fromJson(Map<String, dynamic> json) => ChatGroup(
         id: json['id'] as String,
         type: json['type'] as String? ?? 'private',

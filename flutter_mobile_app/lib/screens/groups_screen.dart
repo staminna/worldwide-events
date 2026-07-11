@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/chat.dart';
 import '../state/chat.dart';
 import '../state/chat_identity.dart';
+import '../state/unread.dart';
 import '../widgets/chat_name_prompt.dart';
 
 /// The Groups tab: the user's chat rooms (event rooms + private groups),
@@ -270,12 +271,24 @@ class _GroupsList extends ConsumerWidget {
             ),
           );
         }
+        final counts = ref.watch(unreadCountsProvider);
+        final readMarks = ref.watch(readMarksProvider);
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(groupsProvider),
           child: ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
             itemCount: list.length,
-            itemBuilder: (_, i) => _GroupTile(group: list[i], onOpen: onOpen),
+            itemBuilder: (_, i) => _GroupTile(
+              group: list[i],
+              unreadCount: counts[list[i].id] ?? 0,
+              hasUnread: groupHasUnread(
+                groupId: list[i].id,
+                lastMessageAt: list[i].lastMessageAt,
+                counts: counts,
+                readMarks: readMarks,
+              ),
+              onOpen: onOpen,
+            ),
           ),
         );
       },
@@ -284,9 +297,16 @@ class _GroupsList extends ConsumerWidget {
 }
 
 class _GroupTile extends StatelessWidget {
-  const _GroupTile({required this.group, required this.onOpen});
+  const _GroupTile({
+    required this.group,
+    required this.unreadCount,
+    required this.hasUnread,
+    required this.onOpen,
+  });
 
   final ChatGroup group;
+  final int unreadCount;
+  final bool hasUnread;
   final void Function(ChatGroup) onOpen;
 
   @override
@@ -302,7 +322,12 @@ class _GroupTile extends StatelessWidget {
           color: group.isEventRoom ? cs.onTertiaryContainer : cs.onPrimaryContainer,
         ),
       ),
-      title: Text(group.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        group.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: hasUnread ? const TextStyle(fontWeight: FontWeight.w600) : null,
+      ),
       subtitle: Text(
         group.lastMessage.isEmpty ? 'No messages yet' : group.lastMessage,
         maxLines: 1,
@@ -316,16 +341,21 @@ class _GroupTile extends StatelessWidget {
             Text(
               _relative(when),
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: cs.onSurfaceVariant,
+                    color: hasUnread ? cs.primary : cs.onSurfaceVariant,
                   ),
             ),
           const SizedBox(height: 4),
-          Text(
-            '${group.memberCount} ${group.memberCount == 1 ? 'member' : 'members'}',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
-          ),
+          if (unreadCount > 0)
+            Badge.count(count: unreadCount)
+          else if (hasUnread)
+            Badge(backgroundColor: cs.primary, smallSize: 10)
+          else
+            Text(
+              '${group.memberCount} ${group.memberCount == 1 ? 'member' : 'members'}',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+            ),
         ],
       ),
       onTap: () => onOpen(group),

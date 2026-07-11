@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../state/follows.dart';
 import '../state/location.dart';
 import '../state/providers.dart';
+import '../state/unread.dart';
 import '../util/notifications.dart';
 import 'groups_screen.dart';
 import 'home_screen.dart';
@@ -134,6 +135,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
   Widget build(BuildContext context) {
     // The map's immersive fullscreen hides the bottom nav.
     final fullscreen = ref.watch(mapFullscreenProvider);
+    final unread = ref.watch(hasAnyUnreadProvider);
     return Scaffold(
       body: IndexedStack(
         index: _index,
@@ -151,20 +153,28 @@ class _HomeShellState extends ConsumerState<HomeShell>
                 _index = i;
                 if (i == 1) _mapVisited = true;
               }),
-              destinations: const [
-                NavigationDestination(
+              destinations: [
+                const NavigationDestination(
                   icon: Icon(Icons.view_agenda_outlined),
                   selectedIcon: Icon(Icons.view_agenda),
                   label: 'Feed',
                 ),
-                NavigationDestination(
+                const NavigationDestination(
                   icon: Icon(Icons.map_outlined),
                   selectedIcon: Icon(Icons.map),
                   label: 'Map',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.forum_outlined),
-                  selectedIcon: Icon(Icons.forum),
+                  icon: Badge(
+                    isLabelVisible: unread,
+                    smallSize: 8,
+                    child: const Icon(Icons.forum_outlined),
+                  ),
+                  selectedIcon: Badge(
+                    isLabelVisible: unread,
+                    smallSize: 8,
+                    child: const Icon(Icons.forum),
+                  ),
                   label: 'Groups',
                 ),
               ],

@@ -145,12 +145,76 @@ final chatConnectionProvider = Provider<ChatConnection>((ref) {
   return conn;
 });
 
-/// The user's groups. Screens call `ref.invalidate(groupsProvider)` after a
-/// create/join/leave to refresh.
-final groupsProvider = FutureProvider<List<ChatGroup>>((ref) async {
+/// The user's groups, kept live: loaded over REST, then updated in place by
+/// incoming WS message envelopes (last message + resort by activity), so the
+/// Groups tab reflects new messages without a manual refresh. Screens still
+/// call `ref.invalidate(groupsProvider)` after create/join/leave.
+class GroupsNotifier extends StateNotifier<AsyncValue<List<ChatGroup>>> {
+  GroupsNotifier(this._ref, {required bool registered})
+      : super(const AsyncValue.loading()) {
+    _wsSub = _ref.read(chatConnectionProvider).stream.listen(_onEnvelope);
+    if (registered) {
+      refresh();
+    } else {
+      state = const AsyncValue.data([]);
+    }
+  }
+
+  final Ref _ref;
+  late final StreamSubscription _wsSub;
+  bool _refreshing = false;
+
+  Future<void> refresh() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      final groups = await _ref.read(chatApiProvider).myGroups();
+      if (mounted) state = AsyncValue.data(groups);
+    } catch (e, st) {
+      if (mounted && state.valueOrNull == null) {
+        state = AsyncValue.error(e, st);
+      }
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  void _onEnvelope(WsEnvelope env) {
+    if (env.type != 'message') return;
+    final groups = state.valueOrNull;
+    if (groups == null) return;
+    final i = groups.indexWhere((g) => g.id == env.groupId);
+    if (i < 0) {
+      // A message for a group we don't know yet (joined on another surface):
+      // reload the list.
+      refresh();
+      return;
+    }
+    final updated = [...groups];
+    updated[i] = updated[i].copyWith(
+      lastMessage: env.body,
+      lastMessageAt:
+          DateTime.tryParse(env.createdAt)?.toLocal() ?? DateTime.now(),
+    );
+    updated.sort((a, b) {
+      final at = a.lastMessageAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bt = b.lastMessageAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bt.compareTo(at);
+    });
+    state = AsyncValue.data(updated);
+  }
+
+  @override
+  void dispose() {
+    _wsSub.cancel();
+    super.dispose();
+  }
+}
+
+final groupsProvider =
+    StateNotifierProvider<GroupsNotifier, AsyncValue<List<ChatGroup>>>((ref) {
   final identity = ref.watch(chatIdentityProvider);
-  if (identity.identity == null) return const [];
-  return ref.watch(chatApiProvider).myGroups();
+  return GroupsNotifier(ref, registered: identity.registered);
 });
 
 class GroupMessagesState {
