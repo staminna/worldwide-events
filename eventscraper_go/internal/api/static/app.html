@@ -3,43 +3,139 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#6750a4">
 <title>Get Worldwide Events</title>
 <style>
-  :root { --bg:#101216; --panel:#181b21; --line:#262b33; --text:#e6e9ee; --dim:#8b93a1; --accent:#6750a4; }
+  /* Material 3 tokens from the app's seed purple (#6750A4), so the page
+     wears the same skin as the app: white cards, purple primary, a purple
+     active pill in the nav, tinted category chips. Light is the hero
+     (the app's default theme); dark mirrors the app's darkTheme. */
+  :root {
+    --bg1:#fef7ff; --bg2:#f3edf7;
+    --card:#ffffff; --sub:#faf7fe; --line:#e7e0ec;
+    --text:#1d1b20; --dim:#49454f; --outline:#79747e;
+    --primary:#6750a4; --on-primary:#ffffff;
+    --primary-container:#eaddff; --on-primary-container:#21005d;
+    --shadow:rgba(31,26,44,.14);
+    --c-feed:#6750a4; --c-map:#2e7d5b; --c-groups:#b0578d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg1:#141218; --bg2:#1c1a22;
+      --card:#211f26; --sub:#1a181f; --line:#322f3a;
+      --text:#e6e1e5; --dim:#cac4d0; --outline:#938f99;
+      --primary:#d0bcff; --on-primary:#381e72;
+      --primary-container:#4f378b; --on-primary-container:#eaddff;
+      --shadow:rgba(0,0,0,.5);
+      --c-feed:#cfbcff; --c-map:#7fd3a6; --c-groups:#f0a9d0;
+    }
+  }
   * { box-sizing: border-box; }
   body {
     margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
-    background:var(--bg); color:var(--text);
-    font:16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding:24px 16px;
+    background:radial-gradient(120% 90% at 50% -10%, var(--bg2) 0%, var(--bg1) 60%);
+    color:var(--text);
+    font:16px/1.5 Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing:antialiased;
   }
   .card {
-    background:var(--panel); border:1px solid var(--line); border-radius:16px;
-    padding:32px 28px; max-width:440px; width:calc(100% - 32px); text-align:center;
+    background:var(--card); border-radius:28px;
+    box-shadow:0 12px 40px var(--shadow);
+    padding:32px 24px 12px; max-width:460px; width:100%;
+    overflow:hidden;
   }
-  .emoji { font-size:44px; }
-  h1 { font-size:22px; margin:12px 0 4px; }
-  p { color:var(--dim); margin:8px 0 0; }
-  .os { margin-top:24px; padding:18px; border:1px solid var(--line); border-radius:12px; text-align:left; }
-  .os h2 { font-size:15px; margin:0 0 6px; display:flex; align-items:center; gap:8px; }
-  .os p { font-size:13.5px; margin:4px 0 0; }
+
+  /* Hero — app icon badge in the primary container tone, like the app's
+     rounded avatars. */
+  .hero { text-align:center; }
+  .badge {
+    width:76px; height:76px; margin:0 auto 14px; border-radius:24px;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--primary-container); font-size:40px;
+  }
+  h1 { font-size:26px; font-weight:600; letter-spacing:-.2px; margin:0; }
+  .tagline { color:var(--dim); margin:8px 4px 0; font-size:15px; }
+
+  /* Feature chips — same shape/tint as the app's category chips. */
+  .chips { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:18px 0 6px; }
+  .chip {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 12px; border-radius:9px; font-size:12.5px; font-weight:600;
+  }
+  .chip svg { width:15px; height:15px; fill:currentColor; }
+  .chip.feed   { color:var(--c-feed);   background:color-mix(in srgb, var(--c-feed) 14%, transparent); }
+  .chip.map    { color:var(--c-map);    background:color-mix(in srgb, var(--c-map) 14%, transparent); }
+  .chip.groups { color:var(--c-groups); background:color-mix(in srgb, var(--c-groups) 14%, transparent); }
+
+  /* Platform cards — nested surfaces, like list cards inside the app. */
+  .platform {
+    margin-top:20px; padding:20px; border-radius:20px;
+    background:var(--sub); border:1px solid var(--line); text-align:left;
+  }
+  .platform h2 { font-size:15px; font-weight:600; margin:0; display:flex; align-items:center; gap:8px; }
+  .platform p { color:var(--dim); font-size:13.5px; margin:6px 0 0; }
+
+  /* Download button — the app's filled purple pill (echoes the nav's
+     active-tab pill). */
   a.btn {
-    display:inline-block; margin-top:12px; padding:12px 22px; border-radius:10px;
-    background:var(--accent); color:#fff; font:600 15px/1 inherit; text-decoration:none;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    margin-top:14px; padding:14px 20px; border-radius:100px;
+    background:var(--primary); color:var(--on-primary);
+    font:600 15px/1 inherit; text-decoration:none;
+    box-shadow:0 4px 14px color-mix(in srgb, var(--primary) 40%, transparent);
+    transition:transform .1s ease;
   }
-  .meta { font-size:12.5px; color:var(--dim); margin-top:8px; }
-  ol { color:var(--dim); font-size:13px; margin:10px 0 0; padding-left:18px; }
+  a.btn:active { transform:scale(.98); }
+  a.btn svg { width:18px; height:18px; fill:currentColor; }
+  .meta { font-size:12.5px; color:var(--outline); margin-top:10px; text-align:center; }
+  ol { color:var(--dim); font-size:13px; margin:14px 0 2px; padding-left:20px; }
+  ol li { margin:3px 0; }
+  ol b { color:var(--text); }
+
+  .share-note { text-align:center; color:var(--outline); font-size:12.5px; margin:16px 6px 0; }
+
+  /* Decorative echo of the app's own bottom nav: white bar, rounded top,
+     purple active pill on Map. Purely visual — ties the page to the app. */
+  .navbar {
+    display:flex; justify-content:space-around; align-items:center; gap:6px;
+    margin:22px -24px -12px; padding:14px 20px;
+    background:var(--card);
+    border-top:1px solid var(--line);
+    border-radius:24px 24px 0 0;
+    box-shadow:0 -6px 18px color-mix(in srgb, var(--shadow) 60%, transparent);
+  }
+  .navtab {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:9px 16px; border-radius:18px; color:var(--dim);
+    font-size:13px; font-weight:600;
+  }
+  .navtab svg { width:22px; height:22px; fill:currentColor; }
+  .navtab.active { background:var(--primary); color:var(--on-primary); }
+  .navtab .label { display:none; }
+  .navtab.active .label { display:inline; }
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="emoji">🌍</div>
-  <h1>Worldwide Events</h1>
-  <p>+1500 events, live maps, group chat and friend finding.<br>Share this page — anyone can install from here.</p>
+<main class="card">
+  <div class="hero">
+    <div class="badge">🌍</div>
+    <h1>Worldwide Events</h1>
+    <p class="tagline">1500+ events, live maps, group chat and friend finding.</p>
+    <div class="chips">
+      <span class="chip feed"><svg viewBox="0 0 24 24"><path d="M4 5h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z"/></svg>Feed</span>
+      <span class="chip map"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>Map</span>
+      <span class="chip groups"><svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2z"/></svg>Groups</span>
+    </div>
+  </div>
 
-  <div class="os">
+  <div class="platform">
     <h2>🤖 Android</h2>
     {{if .HasAPK}}
-    <a class="btn" href="app/android">Download the app (.apk)</a>
+    <a class="btn" href="app/android">
+      <svg viewBox="0 0 24 24"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zM5 18h14v2H5z"/></svg>
+      Download the app
+    </a>
     <div class="meta">{{.SizeMB}} MB · updated {{.Updated}}</div>
     <ol>
       <li>Open the downloaded file</li>
@@ -51,12 +147,20 @@
     {{end}}
   </div>
 
-  <div class="os">
+  <div class="platform">
     <h2>🍎 iPhone / iPad</h2>
     <p>The iOS build ships through TestFlight and isn't public yet.
-    Meanwhile, everything works from the browser too — just keep this
+    Meanwhile everything works from the browser too — just keep this
     page's address handy.</p>
   </div>
-</div>
+
+  <p class="share-note">Share this page — anyone can install from here.</p>
+
+  <nav class="navbar" aria-hidden="true">
+    <span class="navtab"><svg viewBox="0 0 24 24"><path d="M4 5h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z"/></svg><span class="label">Feed</span></span>
+    <span class="navtab active"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg><span class="label">Map</span></span>
+    <span class="navtab"><svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2z"/></svg><span class="label">Groups</span></span>
+  </nav>
+</main>
 </body>
 </html>
